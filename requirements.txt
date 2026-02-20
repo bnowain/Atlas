@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+httpx
+aiosqlite
+sqlalchemy[asyncio]
+pydantic
+pydantic-settings
+openai
+anthropic
+sse-starlette
+cryptography

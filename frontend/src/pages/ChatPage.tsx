@@ -1,0 +1,135 @@
+import { useEffect, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Plus, History, Trash2 } from 'lucide-react'
+import ChatPanel from '../components/Chat/ChatPanel'
+import { useChat } from '../hooks/useChat'
+import { listConversations, getConversation, deleteConversation } from '../api/chat'
+import type { ConversationListItem } from '../api/types'
+import { formatRelative } from '../utils/formatters'
+
+export default function ChatPage() {
+  const { conversationId: urlId } = useParams()
+  const navigate = useNavigate()
+  const chat = useChat()
+  const [conversations, setConversations] = useState<ConversationListItem[]>([])
+  const [showHistory, setShowHistory] = useState(false)
+
+  // Load conversation list
+  useEffect(() => {
+    listConversations(30).then(setConversations).catch(() => {})
+  }, [chat.conversationId])
+
+  // Load conversation from URL
+  useEffect(() => {
+    if (urlId) {
+      const id = parseInt(urlId)
+      if (!isNaN(id) && id !== chat.conversationId) {
+        getConversation(id).then(conv => {
+          chat.setConversationId(conv.id)
+          chat.setMessages(
+            conv.messages
+              .filter(m => m.role === 'user' || m.role === 'assistant')
+              .map(m => ({
+                role: m.role as 'user' | 'assistant',
+                content: m.content || '',
+                toolCalls: m.tool_calls || undefined,
+              }))
+          )
+        }).catch(() => navigate('/chat'))
+      }
+    }
+  }, [urlId])
+
+  // Sync URL with conversation ID
+  useEffect(() => {
+    if (chat.conversationId && !urlId) {
+      navigate(`/chat/${chat.conversationId}`, { replace: true })
+    }
+  }, [chat.conversationId])
+
+  const handleNewChat = () => {
+    chat.setConversationId(null)
+    chat.setMessages([])
+    navigate('/chat')
+  }
+
+  const handleDelete = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    await deleteConversation(id)
+    setConversations(prev => prev.filter(c => c.id !== id))
+    if (chat.conversationId === id) handleNewChat()
+  }
+
+  return (
+    <div className="flex h-full">
+      {/* History sidebar (toggleable) */}
+      {showHistory && (
+        <div className="w-64 border-r border-gray-800 flex flex-col bg-gray-900/50">
+          <div className="flex items-center justify-between px-3 py-3 border-b border-gray-800">
+            <span className="text-sm font-medium">History</span>
+            <button
+              onClick={handleNewChat}
+              className="p-1 hover:bg-gray-700 rounded transition-colors"
+              title="New chat"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {conversations.map(conv => (
+              <button
+                key={conv.id}
+                onClick={() => navigate(`/chat/${conv.id}`)}
+                className={`w-full text-left px-3 py-2.5 border-b border-gray-800/50 hover:bg-gray-800/50 transition-colors group ${
+                  chat.conversationId === conv.id ? 'bg-gray-800' : ''
+                }`}
+              >
+                <div className="text-xs text-gray-300 truncate">{conv.title || 'Untitled'}</div>
+                <div className="flex items-center justify-between mt-0.5">
+                  <span className="text-[11px] text-gray-500">{formatRelative(conv.created_at)}</span>
+                  <button
+                    onClick={e => handleDelete(conv.id, e)}
+                    className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-400 transition-all"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Main chat area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800">
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className={`p-1.5 rounded-lg transition-colors ${showHistory ? 'bg-gray-700' : 'hover:bg-gray-800'}`}
+            title="Toggle history"
+          >
+            <History className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleNewChat}
+            className="p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+            title="New chat"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+          <span className="text-sm text-gray-500 ml-2">
+            {chat.conversationId ? `Chat #${chat.conversationId}` : 'New conversation'}
+          </span>
+        </div>
+
+        <ChatPanel
+          messages={chat.messages}
+          isStreaming={chat.isStreaming}
+          error={chat.error}
+          onSend={text => chat.sendMessage(text)}
+        />
+      </div>
+    </div>
+  )
+}
