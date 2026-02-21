@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Plus, History, Trash2 } from 'lucide-react'
 import ChatPanel from '../components/Chat/ChatPanel'
+import ModelSelector from '../components/Chat/ModelSelector'
 import { useChat } from '../hooks/useChat'
 import { listConversations, getConversation, deleteConversation } from '../api/chat'
 import type { ConversationListItem } from '../api/types'
@@ -13,6 +14,8 @@ export default function ChatPage() {
   const chat = useChat()
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
   const [showHistory, setShowHistory] = useState(false)
+  const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
+  const [selectedProviderId, setSelectedProviderId] = useState<number | null>(null)
 
   // Load conversation list
   useEffect(() => {
@@ -118,6 +121,13 @@ export default function ChatPage() {
           >
             <Plus className="w-4 h-4" />
           </button>
+          <ModelSelector
+            selectedProfile={selectedProfile}
+            selectedProviderId={selectedProviderId}
+            onSelectLocal={(profile) => { setSelectedProfile(profile); setSelectedProviderId(null) }}
+            onSelectProvider={(id) => { setSelectedProviderId(id); setSelectedProfile(null) }}
+            onProviderCreated={() => {}}
+          />
           <span className="text-sm text-gray-500 ml-2">
             {chat.conversationId ? `Chat #${chat.conversationId}` : 'New conversation'}
           </span>
@@ -127,7 +137,7 @@ export default function ChatPage() {
           messages={chat.messages}
           isStreaming={chat.isStreaming}
           error={chat.error}
-          onSend={text => chat.sendMessage(text)}
+          onSend={text => chat.sendMessage(text, selectedProfile || undefined, selectedProviderId || undefined)}
         />
       </div>
     </div>
