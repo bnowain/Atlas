@@ -6,10 +6,12 @@ import json
 import logging
 from typing import AsyncIterator
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models import Conversation, ConversationMessage
-from app.services import llm_client, provider_manager
+from app.services import llm_client, provider_manager, instruction_manager
 from app.services.query_classifier import classify
 from app.services.tool_executor import execute_tool_call
 
@@ -26,6 +28,8 @@ Use tools to find data. Cite sources with dates/titles. Keep responses concise.
 When showing data from tools, format it clearly with relevant details.
 If a tool returns no results, say so — don't make up data."""
 
+SYSTEM_PROMPT_CHAT_ONLY = """You are Atlas, a helpful general-purpose assistant. Answer questions directly from your knowledge. Be concise and accurate."""
+
 MAX_TOOL_ROUNDS = 5
 
 
@@ -35,6 +39,8 @@ async def chat(
     conversation_id: int | None = None,
     profile: str | None = None,
     provider_id: int | None = None,
+    spokes: list[str] | None = None,
+    instruction_id: int | None = None,
 ) -> AsyncIterator[dict]:
     """
     Process a chat message, yielding SSE events.
@@ -44,7 +50,12 @@ async def chat(
 
     # Load or create conversation
     if conversation_id:
-        conversation = await db.get(Conversation, conversation_id)
+        result = await db.execute(
+            select(Conversation)
+            .where(Conversation.id == conversation_id)
+            .options(selectinload(Conversation.messages))
+        )
+        conversation = result.scalar_one_or_none()
         if not conversation:
             yield {"type": "error", "content": f"Conversation {conversation_id} not found"}
             return
@@ -66,7 +77,7 @@ async def chat(
     yield {"type": "conversation_id", "id": conversation.id}
 
     # Classify the query
-    classification = classify(message)
+    classification = classify(message, allowed_spokes=spokes)
     effective_profile = profile or classification.profile
 
     # Resolve provider (external override or local)
@@ -105,46 +116,62 @@ async def chat(
     conversation.model_profile = effective_profile
     conversation.provider_used = provider_label
 
-    # Build messages for LLM
-    llm_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # Build messages for LLM — use chat-only prompt when no tools
+    system_prompt = SYSTEM_PROMPT if classification.tools else SYSTEM_PROMPT_CHAT_ONLY
+
+    # Append custom instruction if selected
+    if instruction_id:
+        instruction = await instruction_manager.get_instruction(db, instruction_id)
+        if instruction:
+            system_prompt += f"\n\n## Custom Instructions\n{instruction.content}"
+
+    llm_messages = [{"role": "system", "content": system_prompt}]
 
     # Load conversation history (last 20 messages for context)
-    existing_msgs = conversation.messages or []
+    existing_msgs = list(conversation.messages) if conversation_id else []
     for msg in existing_msgs[-20:]:
         llm_messages.append({"role": msg.role, "content": msg.content or ""})
 
-    # Tool call loop
+    # Tool call loop (streaming)
     full_response = ""
     all_tool_calls = []
 
     for round_num in range(MAX_TOOL_ROUNDS):
         try:
             if provider_kwargs:
-                result = await llm_client.complete(
+                stream = await llm_client.complete(
                     messages=llm_messages,
                     tools=classification.tools,
-                    stream=False,
+                    stream=True,
                     **provider_kwargs,
                 )
             else:
-                result = await llm_client.complete(
+                stream = await llm_client.complete(
                     profile=effective_profile,
                     messages=llm_messages,
                     tools=classification.tools,
-                    stream=False,
+                    stream=True,
                 )
         except Exception as exc:
             logger.exception("LLM error")
             yield {"type": "error", "content": f"LLM error: {exc}"}
             return
 
-        # Handle content
-        if result.get("content"):
-            full_response += result["content"]
-            yield {"type": "token", "content": result["content"]}
+        # Consume stream: yield tokens immediately, collect tool calls
+        round_content = ""
+        tool_calls = []
 
-        # Handle tool calls
-        tool_calls = result.get("tool_calls", [])
+        async for event in stream:
+            etype = event.get("type")
+            if etype == "token":
+                round_content += event["content"]
+                full_response += event["content"]
+                yield {"type": "token", "content": event["content"]}
+            elif etype == "tool_calls_complete":
+                tool_calls = event["tool_calls"]
+            elif etype == "done":
+                break
+
         if not tool_calls:
             break
 
@@ -170,21 +197,23 @@ async def chat(
 
             yield {"type": "tool_result", "name": fn_name, "result": tool_result}
 
-            # Add assistant tool_call + tool result to messages for next round
             tool_messages.append({
                 "role": "tool",
                 "content": json.dumps(tool_result, default=str),
                 "tool_call_id": tc.get("id", fn_name),
             })
 
-        # Add the assistant's response with tool calls to messages
-        assistant_msg = {"role": "assistant", "content": result.get("content") or ""}
+        # Add the assistant's response with tool calls to messages for next round
+        assistant_msg = {"role": "assistant", "content": round_content or ""}
         if tool_calls:
             assistant_msg["tool_calls"] = [
                 {
                     "id": tc.get("id", tc["function"]["name"]),
                     "type": "function",
-                    "function": tc["function"],
+                    "function": {
+                        "name": tc["function"]["name"],
+                        "arguments": tc["function"]["arguments"] if isinstance(tc["function"]["arguments"], str) else json.dumps(tc["function"]["arguments"]),
+                    },
                 }
                 for tc in tool_calls
             ]

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from app.services.tools import (
     CIVIC_MEDIA_TOOLS, ARTICLE_TRACKER_TOOLS, SHASTA_DB_TOOLS, FACEBOOK_OFFLINE_TOOLS, ALL_TOOLS,
+    SEMANTIC_SEARCH,
 )
 
 
@@ -52,18 +53,31 @@ _CODE_KEYWORDS = [
 ]
 
 
-def classify(query: str) -> Classification:
+def classify(query: str, allowed_spokes: list[str] | None = None) -> Classification:
     """
     Classify a user query to determine which spokes and tools to use.
 
-    Uses keyword matching first. If no spoke matches, returns all tools
-    for LLM-based routing.
+    allowed_spokes controls which spokes may be used:
+      - None  → keyword matching as normal (all spokes eligible)
+      - []    → chat only, no tools
+      - [...]  → only the listed spokes are eligible
     """
+    # Chat-only mode: empty list means no tools at all
+    if allowed_spokes is not None and len(allowed_spokes) == 0:
+        return Classification(
+            spokes=[],
+            tools=[],
+            profile=_select_profile(query.lower()),
+            confidence=1.0,
+        )
+
     query_lower = query.lower()
 
-    # Score each spoke
+    # Score each spoke (only consider allowed ones)
     spoke_scores: dict[str, int] = {}
     for spoke, keywords in _SPOKE_KEYWORDS.items():
+        if allowed_spokes is not None and spoke not in allowed_spokes:
+            continue
         score = sum(1 for kw in keywords if kw in query_lower)
         if score > 0:
             spoke_scores[spoke] = score
@@ -83,11 +97,12 @@ def classify(query: str) -> Classification:
         tools = []
         for spoke in matched_spokes:
             tools.extend(_SPOKE_TOOLS[spoke])
+        # Include semantic search when any spokes are active
+        tools.append(SEMANTIC_SEARCH)
         confidence = min(0.9, 0.5 + 0.1 * sum(spoke_scores.values()))
     else:
-        # No keyword match — give LLM all tools to decide
-        tools = ALL_TOOLS
-        matched_spokes = list(_SPOKE_KEYWORDS.keys())
+        # No keyword match — let the LLM answer from its own knowledge
+        tools = []
         confidence = 0.3
 
     # Select profile

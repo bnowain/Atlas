@@ -241,11 +241,6 @@ async def start_model(key: str) -> dict:
         if not await _ollama_available():
             return {"success": False, "message": "Ollama is not running. Start it first.", "state": "stopped"}
 
-        # VRAM check
-        can_load, reason = await check_can_load(key)
-        if not can_load:
-            return {"success": False, "message": reason, "state": "stopped"}
-
         _states[key] = ModelState.STARTING
         _errors[key] = None
 

@@ -3,8 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Plus, History, Trash2 } from 'lucide-react'
 import ChatPanel from '../components/Chat/ChatPanel'
 import ModelSelector from '../components/Chat/ModelSelector'
+import InstructionSelector from '../components/Chat/InstructionSelector'
+import SpokeFilter, { ALL_SPOKE_KEYS } from '../components/Chat/SpokeFilter'
 import { useChat } from '../hooks/useChat'
 import { listConversations, getConversation, deleteConversation } from '../api/chat'
+import { getDefaultInstruction } from '../api/instructions'
 import type { ConversationListItem } from '../api/types'
 import { formatRelative } from '../utils/formatters'
 
@@ -16,6 +19,15 @@ export default function ChatPage() {
   const [showHistory, setShowHistory] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
   const [selectedProviderId, setSelectedProviderId] = useState<number | null>(null)
+  const [activeSpokes, setActiveSpokes] = useState<string[]>([...ALL_SPOKE_KEYS])
+  const [selectedInstructionId, setSelectedInstructionId] = useState<number | null>(null)
+
+  // Load default instruction on mount
+  useEffect(() => {
+    getDefaultInstruction().then(inst => {
+      if (inst) setSelectedInstructionId(inst.id)
+    }).catch(() => {})
+  }, [])
 
   // Load conversation list
   useEffect(() => {
@@ -128,6 +140,11 @@ export default function ChatPage() {
             onSelectProvider={(id) => { setSelectedProviderId(id); setSelectedProfile(null) }}
             onProviderCreated={() => {}}
           />
+          <SpokeFilter activeSpokes={activeSpokes} onChange={setActiveSpokes} />
+          <InstructionSelector
+            selectedInstructionId={selectedInstructionId}
+            onSelect={setSelectedInstructionId}
+          />
           <span className="text-sm text-gray-500 ml-2">
             {chat.conversationId ? `Chat #${chat.conversationId}` : 'New conversation'}
           </span>
@@ -137,7 +154,7 @@ export default function ChatPage() {
           messages={chat.messages}
           isStreaming={chat.isStreaming}
           error={chat.error}
-          onSend={text => chat.sendMessage(text, selectedProfile || undefined, selectedProviderId || undefined)}
+          onSend={text => chat.sendMessage(text, selectedProfile || undefined, selectedProviderId || undefined, activeSpokes, selectedInstructionId)}
         />
       </div>
     </div>

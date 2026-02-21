@@ -19,6 +19,8 @@ export interface ChatRequest {
   conversation_id?: number | null
   profile?: string | null
   provider_id?: number | null
+  spokes?: string[] | null
+  instruction_id?: number | null
 }
 
 export interface ConversationMessage {
@@ -136,6 +138,28 @@ export interface ModelActionResult {
   success: boolean
   message: string
   state: ModelState
+}
+
+// System Instructions
+export interface SystemInstruction {
+  id: number
+  name: string
+  content: string
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SystemInstructionCreate {
+  name: string
+  content: string
+  is_default?: boolean
+}
+
+export interface SystemInstructionUpdate {
+  name?: string
+  content?: string
+  is_default?: boolean
 }
 
 // Unified people

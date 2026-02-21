@@ -14,7 +14,7 @@ interface UseChatReturn {
   isStreaming: boolean
   conversationId: number | null
   error: string | null
-  sendMessage: (text: string, profile?: string, providerId?: number) => Promise<void>
+  sendMessage: (text: string, profile?: string, providerId?: number, spokes?: string[] | null, instructionId?: number | null) => Promise<void>
   setConversationId: (id: number | null) => void
   setMessages: (msgs: ChatMessage[]) => void
 }
@@ -26,7 +26,7 @@ export function useChat(): UseChatReturn {
   const [error, setError] = useState<string | null>(null)
   const activeToolCalls = useRef<ToolCallRecord[]>([])
 
-  const sendMessage = useCallback(async (text: string, profile?: string, providerId?: number) => {
+  const sendMessage = useCallback(async (text: string, profile?: string, providerId?: number, spokes?: string[] | null, instructionId?: number | null) => {
     setError(null)
     setMessages(prev => [...prev, { role: 'user', content: text }])
     setIsStreaming(true)
@@ -41,6 +41,8 @@ export function useChat(): UseChatReturn {
         conversation_id: conversationId,
         profile: profile || null,
         provider_id: providerId || null,
+        spokes: spokes !== undefined ? spokes : null,
+        instruction_id: instructionId ?? null,
       })
 
       let fullContent = ''

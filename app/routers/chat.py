@@ -31,6 +31,8 @@ async def send_message(req: ChatRequest, db: AsyncSession = Depends(get_db)):
             conversation_id=req.conversation_id,
             profile=req.profile,
             provider_id=req.provider_id,
+            spokes=req.spokes,
+            instruction_id=req.instruction_id,
         ):
             yield {"event": event.get("type", "message"), "data": json.dumps(event, default=str)}
 

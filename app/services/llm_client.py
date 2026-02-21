@@ -148,29 +148,43 @@ async def _complete_local(
 
 
 async def _stream_local(client: AsyncOpenAI, kwargs: dict, profile_key: str) -> AsyncIterator[dict]:
-    """Stream tokens from a local vLLM backend."""
+    """Stream tokens from a local vLLM backend, accumulating tool call deltas."""
     stream = await client.chat.completions.create(**kwargs)
+    accumulated_tool_calls: dict[int, dict] = {}  # index -> {id, function: {name, arguments}}
+
     async for chunk in stream:
-        delta = chunk.choices[0].delta if chunk.choices else None
-        if delta:
-            event = {"profile": profile_key}
-            if delta.content:
-                event["type"] = "token"
-                event["content"] = delta.content
-            if delta.tool_calls:
-                event["type"] = "tool_call"
-                event["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+        if not chunk.choices:
+            continue
+        choice = chunk.choices[0]
+        delta = choice.delta
+
+        if delta and delta.content:
+            yield {"type": "token", "content": delta.content, "profile": profile_key}
+
+        if delta and delta.tool_calls:
+            for tc in delta.tool_calls:
+                idx = tc.index
+                if idx not in accumulated_tool_calls:
+                    accumulated_tool_calls[idx] = {
+                        "id": tc.id or f"tc_{idx}",
+                        "function": {"name": tc.function.name or "", "arguments": tc.function.arguments or ""},
                     }
-                    for tc in delta.tool_calls
-                    if tc.function
-                ]
-            if chunk.choices[0].finish_reason:
-                event["type"] = "done"
-                event["finish_reason"] = chunk.choices[0].finish_reason
-            yield event
+                else:
+                    if tc.function.name:
+                        accumulated_tool_calls[idx]["function"]["name"] += tc.function.name
+                    if tc.function.arguments:
+                        accumulated_tool_calls[idx]["function"]["arguments"] += tc.function.arguments
+                    if tc.id:
+                        accumulated_tool_calls[idx]["id"] = tc.id
+
+        if choice.finish_reason:
+            if accumulated_tool_calls:
+                yield {
+                    "type": "tool_calls_complete",
+                    "tool_calls": list(accumulated_tool_calls.values()),
+                    "profile": profile_key,
+                }
+            yield {"type": "done", "finish_reason": choice.finish_reason, "profile": profile_key}
 
 
 async def _complete_external(
@@ -221,29 +235,43 @@ async def _complete_external(
 
 
 async def _stream_external(client: AsyncOpenAI, kwargs: dict, provider_type: str) -> AsyncIterator[dict]:
-    """Stream tokens from an external OpenAI-compatible API."""
+    """Stream tokens from an external OpenAI-compatible API, accumulating tool call deltas."""
     stream = await client.chat.completions.create(**kwargs)
+    accumulated_tool_calls: dict[int, dict] = {}  # index -> {id, function: {name, arguments}}
+
     async for chunk in stream:
-        delta = chunk.choices[0].delta if chunk.choices else None
-        if delta:
-            event = {"provider": provider_type}
-            if delta.content:
-                event["type"] = "token"
-                event["content"] = delta.content
-            if delta.tool_calls:
-                event["type"] = "tool_call"
-                event["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+        if not chunk.choices:
+            continue
+        choice = chunk.choices[0]
+        delta = choice.delta
+
+        if delta and delta.content:
+            yield {"type": "token", "content": delta.content, "provider": provider_type}
+
+        if delta and delta.tool_calls:
+            for tc in delta.tool_calls:
+                idx = tc.index
+                if idx not in accumulated_tool_calls:
+                    accumulated_tool_calls[idx] = {
+                        "id": tc.id or f"tc_{idx}",
+                        "function": {"name": tc.function.name or "", "arguments": tc.function.arguments or ""},
                     }
-                    for tc in delta.tool_calls
-                    if tc.function
-                ]
-            if chunk.choices[0].finish_reason:
-                event["type"] = "done"
-                event["finish_reason"] = chunk.choices[0].finish_reason
-            yield event
+                else:
+                    if tc.function.name:
+                        accumulated_tool_calls[idx]["function"]["name"] += tc.function.name
+                    if tc.function.arguments:
+                        accumulated_tool_calls[idx]["function"]["arguments"] += tc.function.arguments
+                    if tc.id:
+                        accumulated_tool_calls[idx]["id"] = tc.id
+
+        if choice.finish_reason:
+            if accumulated_tool_calls:
+                yield {
+                    "type": "tool_calls_complete",
+                    "tool_calls": list(accumulated_tool_calls.values()),
+                    "provider": provider_type,
+                }
+            yield {"type": "done", "finish_reason": choice.finish_reason, "provider": provider_type}
 
 
 async def _complete_anthropic(
@@ -314,15 +342,43 @@ async def _complete_anthropic(
 
 
 async def _stream_anthropic(client, kwargs) -> AsyncIterator[dict]:
-    """Stream from Anthropic API."""
+    """Stream from Anthropic API, accumulating tool use blocks."""
+    accumulated_tool_calls: list[dict] = []
+    current_tool: dict | None = None
+
     async with client.messages.stream(**kwargs) as stream:
         async for event in stream:
-            if hasattr(event, "type"):
-                if event.type == "content_block_delta":
-                    if hasattr(event.delta, "text"):
-                        yield {"type": "token", "content": event.delta.text, "provider": "claude"}
-                elif event.type == "message_stop":
-                    yield {"type": "done", "finish_reason": "end_turn", "provider": "claude"}
+            if not hasattr(event, "type"):
+                continue
+            if event.type == "content_block_start":
+                if hasattr(event.content_block, "type") and event.content_block.type == "tool_use":
+                    current_tool = {
+                        "id": event.content_block.id,
+                        "function": {"name": event.content_block.name, "arguments": ""},
+                    }
+            elif event.type == "content_block_delta":
+                if hasattr(event.delta, "text"):
+                    yield {"type": "token", "content": event.delta.text, "provider": "claude"}
+                elif hasattr(event.delta, "partial_json") and current_tool:
+                    current_tool["function"]["arguments"] += event.delta.partial_json
+            elif event.type == "content_block_stop":
+                if current_tool:
+                    # Parse the accumulated JSON arguments
+                    import json as _json
+                    try:
+                        current_tool["function"]["arguments"] = _json.loads(current_tool["function"]["arguments"])
+                    except (_json.JSONDecodeError, ValueError):
+                        pass
+                    accumulated_tool_calls.append(current_tool)
+                    current_tool = None
+            elif event.type == "message_stop":
+                if accumulated_tool_calls:
+                    yield {
+                        "type": "tool_calls_complete",
+                        "tool_calls": accumulated_tool_calls,
+                        "provider": "claude",
+                    }
+                yield {"type": "done", "finish_reason": "end_turn", "provider": "claude"}
 
 
 def _parse_response(resp, source: str) -> dict:

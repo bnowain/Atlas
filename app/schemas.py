@@ -66,6 +66,33 @@ class LLMProviderResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# System Instructions
+# ---------------------------------------------------------------------------
+
+class SystemInstructionCreate(BaseModel):
+    name: str
+    content: str
+    is_default: bool = False
+
+
+class SystemInstructionUpdate(BaseModel):
+    name: Optional[str] = None
+    content: Optional[str] = None
+    is_default: Optional[bool] = None
+
+
+class SystemInstructionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    content: str
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
 # Chat
 # ---------------------------------------------------------------------------
 
@@ -74,6 +101,8 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[int] = None
     profile: Optional[str] = None      # "fast", "quality", "code"
     provider_id: Optional[int] = None   # external provider override
+    spokes: Optional[list[str]] = None  # None = all, [] = chat only
+    instruction_id: Optional[int] = None  # custom instruction preset
 
 
 class ConversationMessageResponse(BaseModel):

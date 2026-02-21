@@ -20,6 +20,17 @@ def _utcnow():
 # Phase 2: LLM provider management
 # ---------------------------------------------------------------------------
 
+class SystemInstruction(Base):
+    __tablename__ = "system_instructions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    is_default = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+
+
 class LLMProvider(Base):
     __tablename__ = "llm_providers"
 

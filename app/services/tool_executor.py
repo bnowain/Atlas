@@ -23,13 +23,13 @@ async def execute_tool_call(name: str, arguments: dict | str) -> dict:
         except json.JSONDecodeError:
             return {"success": False, "error": f"Invalid JSON arguments: {arguments}"}
 
-    spoke_key = TOOL_TO_SPOKE.get(name)
-    if not spoke_key:
-        return {"success": False, "error": f"Unknown tool: {name}"}
-
     try:
         handler = _TOOL_HANDLERS.get(name)
         if not handler:
+            # Check spoke-based tools
+            spoke_key = TOOL_TO_SPOKE.get(name)
+            if not spoke_key:
+                return {"success": False, "error": f"Unknown tool: {name}"}
             return {"success": False, "error": f"No handler for tool: {name}"}
         return await handler(arguments)
     except Exception as exc:
@@ -222,6 +222,35 @@ async def _search_people_fb(args: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Semantic search (LazyChroma RAG)
+# ---------------------------------------------------------------------------
+
+async def _semantic_search(args: dict) -> dict:
+    from app.services.rag.retrieval_validator import retrieve
+    query = args.get("query", "")
+    source_types = args.get("source_types")
+    limit = args.get("limit", 5)
+    try:
+        results = await retrieve(query=query, source_types=source_types, limit=limit)
+        if not results:
+            return {"success": True, "data": [], "message": "No semantic matches found"}
+        # Format results for the LLM
+        formatted = []
+        for r in results:
+            formatted.append({
+                "text": r.get("text", "")[:2000],  # cap length for LLM context
+                "source_type": r.get("metadata", {}).get("source_type", ""),
+                "source_id": r.get("metadata", {}).get("source_id", ""),
+                "date": r.get("metadata", {}).get("date", ""),
+                "relevance_score": round(1 - (r.get("distance", 0) or 0), 4),
+            })
+        return {"success": True, "data": formatted}
+    except Exception as exc:
+        logger.exception("Semantic search error")
+        return {"success": False, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
 # Handler registry
 # ---------------------------------------------------------------------------
 
@@ -246,4 +275,6 @@ _TOOL_HANDLERS = {
     "list_threads": _list_threads,
     "get_thread_messages": _get_thread_messages,
     "search_people_fb": _search_people_fb,
+    # Cross-spoke semantic search
+    "semantic_search": _semantic_search,
 }

@@ -1,0 +1,81 @@
+"""
+Add a Manual Reconciliation / Cache Warm Tool to the Hybrid Chroma Architecture.
+
+This tool is required in addition to:
+
+- Optional pre-index warmup
+- Lazy validation during retrieval
+
+GOAL
+-----
+Provide a deterministic, on-demand reconciliation tool that:
+
+1. Scans canonical DB chunks.
+2. Compares against Chroma metadata.
+3. Detects:
+   - Missing embeddings
+   - Stale embeddings (content_hash mismatch)
+   - Stale embeddings (embedding_version mismatch)
+   - Orphaned embeddings (in Chroma but not in canonical DB)
+4. Repairs inconsistencies.
+5. Can operate in selective or full mode.
+
+This tool is manual-only.
+It must NOT run automatically on startup.
+
+--------------------------------------------------
+REQUIREMENTS
+--------------------------------------------------
+
+1. Tool must support modes:
+
+   --check-only
+   --fix-missing
+   --fix-stale
+   --delete-orphans
+   --full-rebuild
+   --source <facebook|civic_media|articles|shasta>
+
+2. Tool must:
+
+   - Read canonical DB as source of truth.
+   - Never trust Chroma blindly.
+   - Use deterministic chunk_id + content_hash + embedding_version.
+
+3. Tool must:
+
+   - Log total chunks scanned.
+   - Log mismatches found.
+   - Log embeddings regenerated.
+   - Log deletions performed.
+   - Estimate runtime if possible.
+
+4. Performance constraints:
+
+   - Only re-embed chunks that require it.
+   - No unnecessary embedding calls.
+   - Support batching for embedding efficiency.
+
+--------------------------------------------------
+IMPORTANT
+--------------------------------------------------
+
+This reconciliation tool is a performance and integrity utility.
+Correctness must still be enforced lazily during retrieval.
+
+The system must still function correctly if this tool is never run.
+
+--------------------------------------------------
+DELIVERABLE
+--------------------------------------------------
+
+Add:
+
+- reconcile_embeddings.py
+- Integrate with embedding_service.
+- Ensure all Chroma operations go through embedding_service.
+
+No background daemons.
+No automatic scheduling.
+Manual invocation only.
+"""

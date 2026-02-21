@@ -383,6 +383,41 @@ SEARCH_PEOPLE_FB = {
 
 
 # ---------------------------------------------------------------------------
+# Cross-spoke semantic search (LazyChroma RAG)
+# ---------------------------------------------------------------------------
+
+SEMANTIC_SEARCH = {
+    "type": "function",
+    "function": {
+        "name": "semantic_search",
+        "description": "Semantic search across civic data sources. Use for finding relevant content by meaning rather than exact keywords. Returns ranked chunks with source references.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural language search query",
+                },
+                "source_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["civic_media", "article_tracker", "shasta_db", "facebook_offline"],
+                    },
+                    "description": "Which data sources to search (default: all active)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 5)",
+                    "default": 5,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Aggregated tool sets
 # ---------------------------------------------------------------------------
 

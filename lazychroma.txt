@@ -1,0 +1,187 @@
+"""
+Implement Hybrid Persistent Vector Caching with Chroma for Atlas.
+
+GOAL
+-----
+Provide:
+
+- Optional bulk pre-indexing (performance only).
+- Lazy validation and correction on every retrieval.
+- Deterministic chunk identity.
+- Automatic embedding invalidation when transcript text changes.
+- No webhook/event sync across spokes.
+- No startup reconciliation scans.
+- No manual maintenance required.
+
+Chroma is a persistent cache only.
+Canonical DBs remain the source of truth.
+
+--------------------------------------------------
+CORE ARCHITECTURE PRINCIPLES
+--------------------------------------------------
+
+1. Canonical DBs (Facebook, Civic Media, Articles, Shasta) are authoritative.
+2. Chroma is fully rebuildable.
+3. Embeddings must be deterministic and verifiable.
+4. Retrieval must validate embeddings lazily.
+5. System must work correctly if Chroma is wiped entirely.
+6. No background sync daemons.
+
+--------------------------------------------------
+CHUNKING STABILITY REQUIREMENTS
+--------------------------------------------------
+
+IMPORTANT:
+Transcript text may evolve due to Whisper and diarization improvements.
+
+Chunking must:
+
+- Be deterministic.
+- Avoid reliance on diarization boundaries.
+- Avoid reliance on speaker order.
+- Prefer token-based or time-window chunking.
+- Minimize churn when diarization improves.
+
+Chunk identity must depend only on:
+- source_type
+- source_id
+- content_hash
+
+NOT on:
+- chunk index
+- diarization labels
+- speaker order
+
+--------------------------------------------------
+HASHING & IDENTITY
+--------------------------------------------------
+
+Implement shared identity module:
+
+compute_content_hash(text):
+    sha256(text)
+
+compute_chunk_id(source_type, source_id, content_hash):
+    sha256(source_type + ":" + source_id + ":" + content_hash)
+
+Every chunk must store in canonical DB:
+
+- chunk_id
+- content_hash
+- embedding_version
+
+--------------------------------------------------
+EMBEDDING VERSIONING
+--------------------------------------------------
+
+Define global:
+
+EMBEDDING_VERSION = 1
+
+If embedding model changes:
+- Increment version.
+- Lazy re-embedding must occur automatically.
+
+--------------------------------------------------
+CHROMA METADATA STRUCTURE
+--------------------------------------------------
+
+Each embedding must store metadata:
+
+{
+  chunk_id,
+  content_hash,
+  embedding_version,
+  source_type,
+  source_id,
+  date,
+  speaker_ids
+}
+
+No embedding may exist without these fields.
+
+--------------------------------------------------
+OPTIONAL PRE-INDEXING (WARMUP)
+--------------------------------------------------
+
+Implement optional:
+
+pre_index(source_type=None)
+
+Behavior:
+- Iterate canonical chunks.
+- Embed and insert into Chroma.
+- Overwrite if version mismatch.
+
+Pre-indexing improves performance only.
+Correctness must NOT depend on it.
+
+--------------------------------------------------
+LAZY VALIDATION DURING RETRIEVAL
+--------------------------------------------------
+
+For each query:
+
+1. Filter canonical DB via metadata first.
+2. Fetch candidate chunks live.
+3. For each chunk:
+
+   a) Query Chroma by chunk_id.
+   b) If not found → embed + insert.
+   c) If content_hash mismatch → re-embed + overwrite.
+   d) If embedding_version mismatch → re-embed + overwrite.
+   e) If valid → reuse embedding.
+
+4. Perform similarity search.
+5. Return top results to LLM.
+
+No retrieval may trust Chroma blindly.
+
+--------------------------------------------------
+DELETION HANDLING
+--------------------------------------------------
+
+When canonical record is deleted:
+- Delete embeddings by chunk_id.
+- Must be explicit in delete logic.
+
+--------------------------------------------------
+FAIL-SAFE REQUIREMENT
+--------------------------------------------------
+
+System must operate correctly if:
+
+- Chroma is empty.
+- Embeddings are partially missing.
+- embedding_version increases.
+- Transcript text changes frequently.
+
+All corrections must happen lazily during retrieval.
+
+--------------------------------------------------
+STRICT RULES
+--------------------------------------------------
+
+- Chroma is cache only.
+- All embeddings must be rebuildable.
+- No silent failures.
+- All embedding writes must be idempotent.
+- No background sync daemons.
+- No startup full scans.
+- No reliance on diarization for chunk identity.
+
+--------------------------------------------------
+DELIVERABLES
+--------------------------------------------------
+
+Provide:
+
+- identity.py
+- deterministic_chunking.py
+- embedding_service.py
+- retrieval_validator.py
+- pre_index.py
+
+All Chroma interactions must go through embedding_service.
+No direct Chroma usage elsewhere.
+"""
