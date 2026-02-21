@@ -84,7 +84,7 @@ async def _fetch_from_spoke(source_type: str, query: str) -> list[dict]:
     if source_type == "civic_media":
         # Search meetings and get transcripts for matches
         try:
-            resp = await spoke_client.get("civic_media", "/api/meetings")
+            resp = await spoke_client.get("civic_media", "/api/meetings/")
             if resp.status_code == 200:
                 meetings = resp.json()
                 query_lower = query.lower()
@@ -93,7 +93,7 @@ async def _fetch_from_spoke(source_type: str, query: str) -> list[dict]:
                 if not matched:
                     matched = meetings[:10]  # fallback: recent meetings
                 for m in matched[:_MAX_CANDIDATES_PER_SPOKE]:
-                    mid = m.get("id")
+                    mid = m.get("meeting_id") or m.get("id")
                     if not mid:
                         continue
                     seg_resp = await spoke_client.get("civic_media", f"/api/segments/{mid}")
@@ -112,7 +112,7 @@ async def _fetch_from_spoke(source_type: str, query: str) -> list[dict]:
                                 "text": "\n".join(text_parts),
                                 "metadata": {
                                     "title": m.get("title", ""),
-                                    "date": m.get("date", ""),
+                                    "date": m.get("meeting_date", "") or m.get("date", ""),
                                     "speaker_ids": ",".join(str(s) for s in m.get("speaker_ids", [])),
                                 },
                             })
