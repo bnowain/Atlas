@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
@@ -56,9 +57,67 @@ SPOKES: dict[str, SpokeConfig] = {
 }
 
 # ---------------------------------------------------------------------------
-# LLM backend profiles (local vLLM)
+# LLM backend profiles (Ollama)
 # ---------------------------------------------------------------------------
 
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+
+@dataclass
+class OllamaModel:
+    """An Ollama model that can be pulled, loaded, and unloaded."""
+    key: str
+    name: str
+    model_id: str           # Ollama model tag, e.g. "qwen2.5:7b"
+    vram_gb: float           # Approximate VRAM when loaded
+    default_on: bool = False
+    description: str = ""
+    max_tokens: int = 4096
+    temperature: float = 0.3
+    context_length: int = 8192
+
+    @property
+    def base_url(self) -> str:
+        return f"{OLLAMA_BASE_URL}/v1"
+
+
+OLLAMA_MODELS: dict[str, OllamaModel] = {
+    "fast": OllamaModel(
+        key="fast",
+        name="atlas-fast",
+        model_id="qwen2.5:7b",
+        vram_gb=5.0,
+        description="Fast 7B model for quick queries",
+    ),
+    "quality": OllamaModel(
+        key="quality",
+        name="atlas-quality",
+        model_id="qwen2.5:32b",
+        vram_gb=20.0,
+        default_on=True,
+        temperature=0.2,
+        description="High quality 32B model for deep analysis",
+    ),
+    "code": OllamaModel(
+        key="code",
+        name="atlas-code",
+        model_id="qwen2.5-coder:7b",
+        vram_gb=5.0,
+        description="Code-specialized 7B model",
+    ),
+}
+
+
+@dataclass
+class GPUConfig:
+    name: str = "NVIDIA RTX 5090"
+    total_vram_gb: float = 32.0
+
+
+GPU = GPUConfig()
+
+
+# Backward-compatible LLMProfile for llm_client.py
 class LLMProfile:
     def __init__(self, name: str, base_url: str, model: str, max_tokens: int = 4096, temperature: float = 0.3):
         self.name = name
@@ -69,23 +128,14 @@ class LLMProfile:
 
 
 LLM_PROFILES: dict[str, LLMProfile] = {
-    "fast": LLMProfile(
-        name="atlas-fast",
-        base_url="http://localhost:8100/v1",
-        model="Qwen/Qwen2.5-7B-Instruct",
-    ),
-    "quality": LLMProfile(
-        name="atlas-quality",
-        base_url="http://localhost:8101/v1",
-        model="Qwen/Qwen2.5-72B-Instruct-AWQ",
-        max_tokens=4096,
-        temperature=0.2,
-    ),
-    "code": LLMProfile(
-        name="atlas-code",
-        base_url="http://localhost:8102/v1",
-        model="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
-    ),
+    key: LLMProfile(
+        name=m.name,
+        base_url=m.base_url,
+        model=m.model_id,
+        max_tokens=m.max_tokens,
+        temperature=m.temperature,
+    )
+    for key, m in OLLAMA_MODELS.items()
 }
 
 # Fallback chains for local profiles

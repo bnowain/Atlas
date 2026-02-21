@@ -96,10 +96,18 @@ async def _complete_local(
     temperature: float | None,
 ) -> dict | AsyncIterator[dict]:
     """Complete via local vLLM, with fallback chain."""
-    # Try primary, then fallback
+    # Try primary, then fallback chain, then any running model
     attempts = [profile_key]
     if profile_key in LLM_FALLBACKS:
         attempts.append(LLM_FALLBACKS[profile_key])
+    # Add any other running models as last resort
+    try:
+        from app.services.ollama_manager import get_running_profiles
+        for running_key in get_running_profiles():
+            if running_key not in attempts:
+                attempts.append(running_key)
+    except ImportError:
+        pass
 
     last_error = None
     for key in attempts:

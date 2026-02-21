@@ -1,13 +1,30 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, Check, X, Loader2, Zap } from 'lucide-react'
 import { listProviders, createProvider, updateProvider, deleteProvider, testProvider } from '../api/spokes'
+import { startModel, stopModel } from '../api/models'
+import { useModels } from '../hooks/useModels'
 import type { LLMProvider } from '../api/types'
+import VRAMBar from '../components/Settings/VRAMBar'
+import ModelCard from '../components/Settings/ModelCard'
 
 export default function SettingsPage() {
   const [providers, setProviders] = useState<LLMProvider[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [testResults, setTestResults] = useState<Record<number, { success: boolean; error?: string } | 'testing'>>({})
+
+  // vLLM models
+  const { models, gpu, refresh: refreshModels } = useModels()
+
+  const handleStartModel = async (key: string) => {
+    await startModel(key)
+    refreshModels()
+  }
+
+  const handleStopModel = async (key: string) => {
+    await stopModel(key)
+    refreshModels()
+  }
 
   // Form state
   const [form, setForm] = useState({
@@ -244,27 +261,26 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Local backends info */}
+      {/* Local Ollama Backends */}
       <div>
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Local vLLM Backends</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Local Ollama Models</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          GPU-accelerated models via Ollama. Toggle models on and off — VRAM is tracked automatically.
+        </p>
+
+        {gpu && <VRAMBar gpu={gpu} />}
+
         <div className="space-y-2">
-          {[
-            { name: 'atlas-fast', port: 8100, model: 'Qwen2.5-7B-Instruct' },
-            { name: 'atlas-quality', port: 8101, model: 'Qwen2.5-72B-Instruct-AWQ' },
-            { name: 'atlas-code', port: 8102, model: 'DeepSeek-Coder-V2-Lite' },
-          ].map(b => (
-            <div key={b.name} className="bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 flex items-center justify-between">
-              <div>
-                <div className="text-sm">{b.name}</div>
-                <div className="text-xs text-gray-500">{b.model} &middot; port {b.port}</div>
-              </div>
-              <span className="text-xs text-gray-500">WSL2</span>
-            </div>
+          {models.map(m => (
+            <ModelCard
+              key={m.key}
+              model={m}
+              onStart={handleStartModel}
+              onStop={handleStopModel}
+              canLoad={gpu ? gpu.available_vram_gb >= m.vram_gb : true}
+            />
           ))}
         </div>
-        <p className="text-xs text-gray-600 mt-2">
-          Start local backends with: <code className="bg-gray-800 px-1 py-0.5 rounded">bash scripts/vllm-start.sh</code> (in WSL2)
-        </p>
       </div>
     </div>
   )

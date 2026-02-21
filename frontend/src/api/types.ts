@@ -107,6 +107,37 @@ export interface SearchResult {
   metadata: Record<string, unknown> | null
 }
 
+// Local Model Management (Ollama)
+export type ModelState = 'stopped' | 'starting' | 'running' | 'stopping' | 'error'
+
+export interface LocalModel {
+  key: string
+  name: string
+  model_id: string
+  vram_gb: number
+  context_length: number
+  description: string
+  default_on: boolean
+  state: ModelState
+  error: string | null
+  started_at: number | null
+}
+
+export interface GPUInfo {
+  name: string
+  total_vram_gb: number
+  used_vram_gb: number
+  available_vram_gb: number
+  estimated_loaded_gb: number
+  models_loaded: number
+}
+
+export interface ModelActionResult {
+  success: boolean
+  message: string
+  state: ModelState
+}
+
 // Unified people
 export interface PersonMapping {
   id: number

@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from app.database import init_db
-from app.services import spoke_client, spoke_registry
+from app.services import spoke_client, spoke_registry, ollama_manager
 from app.middleware.error_handling import spoke_error_handler, spoke_timeout_handler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(name)-28s  %(levelname)-5s  %(message)s")
@@ -34,8 +34,19 @@ async def lifespan(app: FastAPI):
         icon = "+" if s.online else "-"
         lat = f" ({s.latency_ms}ms)" if s.latency_ms else ""
         logger.info("  [%s] %s %s%s", icon, s.name, s.base_url, lat)
+
+    # Detect already-loaded Ollama models and start health polling
+    await ollama_manager.detect_running_models()
+    ollama_manager.start_health_polling()
+    running = ollama_manager.get_running_profiles()
+    if running:
+        logger.info("Ollama models already loaded: %s", ", ".join(running))
+    else:
+        logger.info("No Ollama models detected — start them from the Settings page")
+
     yield
     # Shutdown
+    ollama_manager.stop_health_polling()
     spoke_registry.stop_polling()
     await spoke_client.close_clients()
 
@@ -68,7 +79,7 @@ app.add_exception_handler(httpx.ConnectError, spoke_error_handler)
 app.add_exception_handler(httpx.TimeoutException, spoke_timeout_handler)
 
 # --- Routers ---
-from app.routers import health, spokes, chat, settings, people, search, pipeline  # noqa: E402
+from app.routers import health, spokes, chat, settings, people, search, pipeline, models  # noqa: E402
 
 app.include_router(health.router)
 app.include_router(spokes.router)
@@ -77,6 +88,7 @@ app.include_router(settings.router)
 app.include_router(people.router)
 app.include_router(search.router)
 app.include_router(pipeline.router)
+app.include_router(models.router)
 
 # --- Static file serving (production) ---
 if FRONTEND_DIST.is_dir():
