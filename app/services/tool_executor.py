@@ -251,6 +251,60 @@ async def _semantic_search(args: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Shasta-PRA handlers
+# ---------------------------------------------------------------------------
+
+async def _search_pra_requests(args: dict) -> dict:
+    params = {"limit": args.get("limit", 10)}
+    if args.get("query"):
+        params["q"] = args["query"]
+    if args.get("status"):
+        params["status"] = args["status"]
+    if args.get("department"):
+        params["department"] = args["department"]
+    if args.get("poc"):
+        params["poc"] = args["poc"]
+    if args.get("date_from"):
+        params["date_from"] = args["date_from"]
+    if args.get("date_to"):
+        params["date_to"] = args["date_to"]
+    resp = await spoke_client.get("shasta_pra", "/api/requests", params=params)
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _get_pra_request(args: dict) -> dict:
+    pid = args["pretty_id"]
+    resp = await spoke_client.get("shasta_pra", f"/api/requests/{pid}")
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _list_pra_departments(args: dict) -> dict:
+    resp = await spoke_client.get("shasta_pra", "/api/departments")
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _get_pra_stats(args: dict) -> dict:
+    resp = await spoke_client.get("shasta_pra", "/api/stats")
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _search_pra_all(args: dict) -> dict:
+    params = {"q": args["query"], "limit": args.get("limit", 20)}
+    resp = await spoke_client.get("shasta_pra", "/api/search", params=params)
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+# ---------------------------------------------------------------------------
 # Handler registry
 # ---------------------------------------------------------------------------
 
@@ -275,6 +329,12 @@ _TOOL_HANDLERS = {
     "list_threads": _list_threads,
     "get_thread_messages": _get_thread_messages,
     "search_people_fb": _search_people_fb,
+    # Shasta-PRA
+    "search_pra_requests": _search_pra_requests,
+    "get_pra_request": _get_pra_request,
+    "list_pra_departments": _list_pra_departments,
+    "get_pra_stats": _get_pra_stats,
+    "search_pra_all": _search_pra_all,
     # Cross-spoke semantic search
     "semantic_search": _semantic_search,
 }

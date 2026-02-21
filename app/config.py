@@ -54,6 +54,12 @@ SPOKES: dict[str, SpokeConfig] = {
         base_url="http://localhost:8147",
         health_path="/api/health",
     ),
+    "shasta_pra": SpokeConfig(
+        key="shasta_pra",
+        name="Shasta PRA",
+        base_url="http://localhost:8845",
+        health_path="/api/health",
+    ),
 }
 
 # ---------------------------------------------------------------------------

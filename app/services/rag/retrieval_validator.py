@@ -34,7 +34,7 @@ async def retrieve(
 
     Returns a list of result dicts with text, metadata, and distance.
     """
-    active_sources = source_types or ["civic_media", "article_tracker", "shasta_db", "facebook_offline"]
+    active_sources = source_types or ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra"]
 
     # 1. Fetch candidates from spokes
     candidates = await _fetch_candidates(query, active_sources)
@@ -180,6 +180,32 @@ async def _fetch_from_spoke(source_type: str, query: str) -> list[dict]:
                             })
         except Exception as exc:
             logger.warning("shasta_db fetch error: %s", exc)
+
+    elif source_type == "shasta_pra":
+        try:
+            params = {"limit": _MAX_CANDIDATES_PER_SPOKE}
+            if query:
+                params["q"] = query
+            resp = await spoke_client.get("shasta_pra", "/api/requests", params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results", []) if isinstance(data, dict) else data
+                for r in results[:_MAX_CANDIDATES_PER_SPOKE]:
+                    text = r.get("request_text", "")
+                    if text:
+                        records.append({
+                            "source_type": "shasta_pra",
+                            "source_id": str(r.get("pretty_id", "")),
+                            "text": text,
+                            "metadata": {
+                                "pretty_id": r.get("pretty_id", ""),
+                                "department": r.get("department_names", ""),
+                                "status": r.get("request_state", ""),
+                                "date": r.get("request_date", ""),
+                            },
+                        })
+        except Exception as exc:
+            logger.warning("shasta_pra fetch error: %s", exc)
 
     elif source_type == "facebook_offline":
         try:

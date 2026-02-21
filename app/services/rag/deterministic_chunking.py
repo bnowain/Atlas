@@ -101,6 +101,24 @@ def _chunk_facebook_offline(source_type: str, source_id: str, text: str, metadat
     return _sliding_window_chunks(source_type, source_id, full_text, metadata)
 
 
+def _chunk_shasta_pra(source_type: str, source_id: str, text: str, metadata: dict) -> list[Chunk]:
+    """Metadata prefix + sliding window for PRA request texts."""
+    prefix = ""
+    if metadata.get("pretty_id"):
+        prefix = f"PRA Request: {metadata['pretty_id']}\n"
+    if metadata.get("department"):
+        prefix += f"Department: {metadata['department']}\n"
+    if metadata.get("status"):
+        prefix += f"Status: {metadata['status']}\n"
+    if metadata.get("date"):
+        prefix += f"Date: {metadata['date']}\n"
+    if prefix:
+        prefix += "\n"
+
+    full_text = prefix + text
+    return _sliding_window_chunks(source_type, source_id, full_text, metadata)
+
+
 def _chunk_generic(source_type: str, source_id: str, text: str, metadata: dict) -> list[Chunk]:
     """Fallback: sliding window chunks."""
     return _sliding_window_chunks(source_type, source_id, text, metadata)
@@ -155,4 +173,5 @@ _STRATEGIES = {
     "article_tracker": _chunk_article_tracker,
     "shasta_db": _chunk_shasta_db,
     "facebook_offline": _chunk_facebook_offline,
+    "shasta_pra": _chunk_shasta_pra,
 }

@@ -383,6 +383,120 @@ SEARCH_PEOPLE_FB = {
 
 
 # ---------------------------------------------------------------------------
+# Shasta-PRA tools
+# ---------------------------------------------------------------------------
+
+SEARCH_PRA_REQUESTS = {
+    "type": "function",
+    "function": {
+        "name": "search_pra_requests",
+        "description": "Search Shasta County public records requests by keyword, status, department, POC, or date range.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search term for request text, ID, requester, or POC",
+                },
+                "status": {
+                    "type": "string",
+                    "description": "Filter by request state (e.g., Closed, Open, Overdue)",
+                },
+                "department": {
+                    "type": "string",
+                    "description": "Filter by department name",
+                },
+                "poc": {
+                    "type": "string",
+                    "description": "Filter by point of contact name",
+                },
+                "date_from": {
+                    "type": "string",
+                    "description": "Start date YYYY-MM-DD",
+                },
+                "date_to": {
+                    "type": "string",
+                    "description": "End date YYYY-MM-DD",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 10)",
+                    "default": 10,
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+GET_PRA_REQUEST = {
+    "type": "function",
+    "function": {
+        "name": "get_pra_request",
+        "description": "Get full details of a specific public records request by its pretty ID (e.g., '25-389'), including timeline and documents.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "pretty_id": {
+                    "type": "string",
+                    "description": "The request pretty ID (e.g., '25-389')",
+                },
+            },
+            "required": ["pretty_id"],
+        },
+    },
+}
+
+LIST_PRA_DEPARTMENTS = {
+    "type": "function",
+    "function": {
+        "name": "list_pra_departments",
+        "description": "List all Shasta County departments that process public records requests, with request counts.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+}
+
+GET_PRA_STATS = {
+    "type": "function",
+    "function": {
+        "name": "get_pra_stats",
+        "description": "Get overview statistics for Shasta County public records requests: totals, status breakdown, department breakdown, requests by month.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+}
+
+SEARCH_PRA_ALL = {
+    "type": "function",
+    "function": {
+        "name": "search_pra_all",
+        "description": "Full-text search across all PRA tables (requests, timeline events, documents).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search term",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results per category (default 20)",
+                    "default": 20,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Cross-spoke semantic search (LazyChroma RAG)
 # ---------------------------------------------------------------------------
 
@@ -402,7 +516,7 @@ SEMANTIC_SEARCH = {
                     "type": "array",
                     "items": {
                         "type": "string",
-                        "enum": ["civic_media", "article_tracker", "shasta_db", "facebook_offline"],
+                        "enum": ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra"],
                     },
                     "description": "Which data sources to search (default: all active)",
                 },
@@ -425,8 +539,9 @@ CIVIC_MEDIA_TOOLS = [SEARCH_MEETINGS, GET_TRANSCRIPT, SEARCH_SPEAKERS, GET_SPEAK
 ARTICLE_TRACKER_TOOLS = [SEARCH_ARTICLES, GET_ARTICLE_STATS, GET_RECENT_ARTICLES]
 SHASTA_DB_TOOLS = [SEARCH_FILES, LIST_ARCHIVE_PEOPLE, GET_FILE_INFO]
 FACEBOOK_OFFLINE_TOOLS = [SEARCH_MESSAGES, SEARCH_POSTS, LIST_THREADS, GET_THREAD_MESSAGES, SEARCH_PEOPLE_FB]
+SHASTA_PRA_TOOLS = [SEARCH_PRA_REQUESTS, GET_PRA_REQUEST, LIST_PRA_DEPARTMENTS, GET_PRA_STATS, SEARCH_PRA_ALL]
 
-ALL_TOOLS = CIVIC_MEDIA_TOOLS + ARTICLE_TRACKER_TOOLS + SHASTA_DB_TOOLS + FACEBOOK_OFFLINE_TOOLS
+ALL_TOOLS = CIVIC_MEDIA_TOOLS + ARTICLE_TRACKER_TOOLS + SHASTA_DB_TOOLS + FACEBOOK_OFFLINE_TOOLS + SHASTA_PRA_TOOLS
 
 # Map tool name → spoke key for routing
 TOOL_TO_SPOKE: dict[str, str] = {}
@@ -438,3 +553,5 @@ for tool in SHASTA_DB_TOOLS:
     TOOL_TO_SPOKE[tool["function"]["name"]] = "shasta_db"
 for tool in FACEBOOK_OFFLINE_TOOLS:
     TOOL_TO_SPOKE[tool["function"]["name"]] = "facebook_offline"
+for tool in SHASTA_PRA_TOOLS:
+    TOOL_TO_SPOKE[tool["function"]["name"]] = "shasta_pra"
