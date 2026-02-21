@@ -128,9 +128,13 @@ async def chat(
     llm_messages = [{"role": "system", "content": system_prompt}]
 
     # Load conversation history (last 20 messages for context)
-    existing_msgs = list(conversation.messages) if conversation_id else []
-    for msg in existing_msgs[-20:]:
-        llm_messages.append({"role": msg.role, "content": msg.content or ""})
+    if conversation_id:
+        existing_msgs = list(conversation.messages)
+        for msg in existing_msgs[-20:]:
+            llm_messages.append({"role": msg.role, "content": msg.content or ""})
+    else:
+        # New conversation — just the current user message
+        llm_messages.append({"role": "user", "content": message})
 
     # Tool call loop (streaming)
     full_response = ""
