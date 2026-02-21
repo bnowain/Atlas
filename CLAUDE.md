@@ -68,9 +68,19 @@ When building an integration:
 4. If no — propose the new spoke endpoint, wait for approval, then implement both sides
 5. Test the spoke endpoint independently before wiring it into Atlas
 
+## Running Atlas
+
+Start the server with:
+```
+python run.py
+```
+Do NOT use `python -m uvicorn app.main:app` directly — `run.py` sets `SO_REUSEADDR` on the socket to prevent the Windows zombie socket problem where port 8888 stays locked after a killed process.
+
 ## Tech Stack
 
 - Python
 - FastAPI or lightweight HTTP client for spoke communication
 - SQLite for any Atlas-specific state (query logs, cached cross-app results)
+- ChromaDB for LazyChroma RAG embedding cache (persistent but fully rebuildable)
+- Ollama for local LLM inference and embeddings (nomic-embed-text)
 - All spoke communication via HTTP API calls — never direct database access across apps
