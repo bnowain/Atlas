@@ -6,7 +6,8 @@ import re
 from dataclasses import dataclass
 
 from app.services.tools import (
-    CIVIC_MEDIA_TOOLS, ARTICLE_TRACKER_TOOLS, SHASTA_DB_TOOLS, FACEBOOK_OFFLINE_TOOLS, ALL_TOOLS,
+    CIVIC_MEDIA_TOOLS, ARTICLE_TRACKER_TOOLS, SHASTA_DB_TOOLS, FACEBOOK_OFFLINE_TOOLS,
+    SHASTA_PRA_TOOLS, FACEBOOK_MONITOR_TOOLS, CAMPAIGN_FINANCE_TOOLS, ALL_TOOLS,
     SEMANTIC_SEARCH,
 )
 
@@ -36,8 +37,23 @@ _SPOKE_KEYWORDS: dict[str, list[str]] = {
         "shasta", "media file", "document", "browse", "catalog",
     ],
     "facebook_offline": [
-        "facebook", "fb", "message", "messages", "messenger", "post", "posts",
+        "facebook", "fb", "message", "messages", "messenger",
         "thread", "conversation", "chat", "dm", "inbox",
+    ],
+    "shasta_pra": [
+        "pra", "public record", "public records", "records request", "nextrequest",
+        "foia", "cpra", "disclosure", "department", "requester",
+    ],
+    "facebook_monitor": [
+        "monitored page", "facebook page", "page post", "page posts", "tracked page",
+        "facebook monitor", "fb page", "commenter", "commenters", "engagement",
+        "reaction", "shared post", "public post", "public posts",
+    ],
+    "campaign_finance": [
+        "campaign", "campaign finance", "contribution", "contributions", "expenditure",
+        "expenditures", "donor", "donors", "filer", "filers", "filing", "filings",
+        "fppc", "form 460", "pac", "committee", "treasurer", "netfile",
+        "election", "candidate", "ballot measure",
     ],
 }
 
@@ -130,4 +146,7 @@ _SPOKE_TOOLS = {
     "article_tracker": ARTICLE_TRACKER_TOOLS,
     "shasta_db": SHASTA_DB_TOOLS,
     "facebook_offline": FACEBOOK_OFFLINE_TOOLS,
+    "shasta_pra": SHASTA_PRA_TOOLS,
+    "facebook_monitor": FACEBOOK_MONITOR_TOOLS,
+    "campaign_finance": CAMPAIGN_FINANCE_TOOLS,
 }

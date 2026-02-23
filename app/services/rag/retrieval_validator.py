@@ -34,7 +34,7 @@ async def retrieve(
 
     Returns a list of result dicts with text, metadata, and distance.
     """
-    active_sources = source_types or ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra"]
+    active_sources = source_types or ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra", "facebook_monitor", "campaign_finance"]
 
     # 1. Fetch candidates from spokes
     candidates = await _fetch_candidates(query, active_sources)
@@ -229,6 +229,68 @@ async def _fetch_from_spoke(source_type: str, query: str) -> list[dict]:
                         })
         except Exception as exc:
             logger.warning("facebook_offline fetch error: %s", exc)
+
+    elif source_type == "facebook_monitor":
+        try:
+            params = {"q": query, "limit": _MAX_CANDIDATES_PER_SPOKE}
+            resp = await spoke_client.get("facebook_monitor", "/api/posts/search", params=params)
+            if resp.status_code == 200:
+                posts = resp.json()
+                if isinstance(posts, list):
+                    for p in posts[:_MAX_CANDIDATES_PER_SPOKE]:
+                        text = p.get("text", "")
+                        if text:
+                            records.append({
+                                "source_type": "facebook_monitor",
+                                "source_id": str(p.get("id", "")),
+                                "text": text,
+                                "metadata": {
+                                    "page_name": p.get("page_name", ""),
+                                    "author": p.get("author", ""),
+                                    "date": p.get("date", ""),
+                                    "post_url": p.get("post_url", ""),
+                                },
+                            })
+        except Exception as exc:
+            logger.warning("facebook_monitor fetch error: %s", exc)
+
+    elif source_type == "campaign_finance":
+        try:
+            params = {"limit": _MAX_CANDIDATES_PER_SPOKE}
+            if query:
+                params["search"] = query
+            resp = await spoke_client.get("campaign_finance", "/api/transactions", params=params)
+            if resp.status_code == 200:
+                txns = resp.json()
+                if isinstance(txns, list):
+                    for t in txns[:_MAX_CANDIDATES_PER_SPOKE]:
+                        parts = []
+                        if t.get("entity_name"):
+                            parts.append(f"Entity: {t['entity_name']}")
+                        if t.get("amount"):
+                            parts.append(f"Amount: ${t['amount']}")
+                        if t.get("schedule"):
+                            parts.append(f"Schedule: {t['schedule']}")
+                        if t.get("description"):
+                            parts.append(f"Description: {t['description']}")
+                        if t.get("employer"):
+                            parts.append(f"Employer: {t['employer']}")
+                        if t.get("occupation"):
+                            parts.append(f"Occupation: {t['occupation']}")
+                        text = "\n".join(parts)
+                        if text:
+                            records.append({
+                                "source_type": "campaign_finance",
+                                "source_id": str(t.get("transaction_id", "")),
+                                "text": text,
+                                "metadata": {
+                                    "entity_name": t.get("entity_name", ""),
+                                    "schedule": t.get("schedule", ""),
+                                    "date": t.get("transaction_date", ""),
+                                },
+                            })
+        except Exception as exc:
+            logger.warning("campaign_finance fetch error: %s", exc)
 
     return records
 

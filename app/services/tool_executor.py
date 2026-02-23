@@ -222,6 +222,130 @@ async def _search_people_fb(args: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Campaign Finance handlers
+# ---------------------------------------------------------------------------
+
+async def _search_campaign_filers(args: dict) -> dict:
+    params = {"limit": args.get("limit", 10)}
+    if args.get("query"):
+        params["search"] = args["query"]
+    if args.get("filer_type"):
+        params["filer_type"] = args["filer_type"]
+    resp = await spoke_client.get("campaign_finance", "/api/filers", params=params)
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _get_campaign_filer(args: dict) -> dict:
+    fid = args["filer_id"]
+    resp = await spoke_client.get("campaign_finance", f"/api/filers/{fid}")
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _search_campaign_transactions(args: dict) -> dict:
+    params = {"limit": args.get("limit", 20)}
+    if args.get("query"):
+        params["search"] = args["query"]
+    if args.get("schedule"):
+        params["schedule"] = args["schedule"]
+    if args.get("amount_min"):
+        params["amount_min"] = args["amount_min"]
+    if args.get("amount_max"):
+        params["amount_max"] = args["amount_max"]
+    if args.get("date_from"):
+        params["date_from"] = args["date_from"]
+    if args.get("date_to"):
+        params["date_to"] = args["date_to"]
+    resp = await spoke_client.get("campaign_finance", "/api/transactions", params=params)
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _search_campaign_filings(args: dict) -> dict:
+    params = {"limit": args.get("limit", 20)}
+    if args.get("query"):
+        params["search"] = args["query"]
+    if args.get("form_type"):
+        params["form_type"] = args["form_type"]
+    if args.get("filer_id"):
+        params["filer_id"] = args["filer_id"]
+    if args.get("date_from"):
+        params["date_from"] = args["date_from"]
+    if args.get("date_to"):
+        params["date_to"] = args["date_to"]
+    resp = await spoke_client.get("campaign_finance", "/api/filings", params=params)
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _get_campaign_stats(args: dict) -> dict:
+    resp = await spoke_client.get("campaign_finance", "/api/stats")
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _search_campaign_people(args: dict) -> dict:
+    params = {"q": args["query"], "limit": args.get("limit", 20)}
+    resp = await spoke_client.get("campaign_finance", "/api/people/search", params=params)
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+# ---------------------------------------------------------------------------
+# Facebook-Monitor handlers
+# ---------------------------------------------------------------------------
+
+async def _search_monitored_posts(args: dict) -> dict:
+    params = {"q": args["query"], "limit": args.get("limit", 10)}
+    if args.get("page_name"):
+        params["page_name"] = args["page_name"]
+    resp = await spoke_client.get("facebook_monitor", "/api/posts/search", params=params)
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _get_monitored_post(args: dict) -> dict:
+    pid = args["post_id"]
+    resp = await spoke_client.get("facebook_monitor", f"/api/posts/{pid}")
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _search_monitored_people(args: dict) -> dict:
+    params = {"search": args.get("query", "")}
+    resp = await spoke_client.get("facebook_monitor", "/api/people", params=params)
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _list_monitored_pages(args: dict) -> dict:
+    resp = await spoke_client.get("facebook_monitor", "/api/stats")
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _get_fb_monitor_entities(args: dict) -> dict:
+    params = {}
+    if args.get("query"):
+        params["search"] = args["query"]
+    resp = await spoke_client.get("facebook_monitor", "/api/entities", params=params)
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+# ---------------------------------------------------------------------------
 # Semantic search (LazyChroma RAG)
 # ---------------------------------------------------------------------------
 
@@ -335,6 +459,19 @@ _TOOL_HANDLERS = {
     "list_pra_departments": _list_pra_departments,
     "get_pra_stats": _get_pra_stats,
     "search_pra_all": _search_pra_all,
+    # Campaign Finance
+    "search_campaign_filers": _search_campaign_filers,
+    "get_campaign_filer": _get_campaign_filer,
+    "search_campaign_transactions": _search_campaign_transactions,
+    "search_campaign_filings": _search_campaign_filings,
+    "get_campaign_stats": _get_campaign_stats,
+    "search_campaign_people": _search_campaign_people,
+    # Facebook-Monitor
+    "search_monitored_posts": _search_monitored_posts,
+    "get_monitored_post": _get_monitored_post,
+    "search_monitored_people": _search_monitored_people,
+    "list_monitored_pages": _list_monitored_pages,
+    "get_fb_monitor_entities": _get_fb_monitor_entities,
     # Cross-spoke semantic search
     "semantic_search": _semantic_search,
 }

@@ -497,6 +497,274 @@ SEARCH_PRA_ALL = {
 }
 
 # ---------------------------------------------------------------------------
+# Campaign Finance tools
+# ---------------------------------------------------------------------------
+
+SEARCH_CAMPAIGN_FILERS = {
+    "type": "function",
+    "function": {
+        "name": "search_campaign_filers",
+        "description": "Search campaign finance filers (candidates, PACs, committees) in Shasta County. Returns name, type, status, office, and filing dates.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search by filer name or FPPC ID",
+                },
+                "filer_type": {
+                    "type": "string",
+                    "enum": ["candidate", "measure", "pac", "party"],
+                    "description": "Filter by filer type",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 10)",
+                    "default": 10,
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+GET_CAMPAIGN_FILER = {
+    "type": "function",
+    "function": {
+        "name": "get_campaign_filer",
+        "description": "Get detailed info about a specific campaign filer including filing count, total contributions, and total expenditures.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filer_id": {
+                    "type": "string",
+                    "description": "The filer UUID",
+                },
+            },
+            "required": ["filer_id"],
+        },
+    },
+}
+
+SEARCH_CAMPAIGN_TRANSACTIONS = {
+    "type": "function",
+    "function": {
+        "name": "search_campaign_transactions",
+        "description": "Search campaign finance transactions (contributions and expenditures). Filter by donor/payee name, amount range, date range, or schedule type.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search by entity name, employer, or description",
+                },
+                "schedule": {
+                    "type": "string",
+                    "description": "Filter by schedule (A=contributions, E=expenditures, C=non-monetary)",
+                },
+                "amount_min": {
+                    "type": "string",
+                    "description": "Minimum amount filter",
+                },
+                "amount_max": {
+                    "type": "string",
+                    "description": "Maximum amount filter",
+                },
+                "date_from": {
+                    "type": "string",
+                    "description": "Start date YYYY-MM-DD",
+                },
+                "date_to": {
+                    "type": "string",
+                    "description": "End date YYYY-MM-DD",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 20)",
+                    "default": 20,
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+SEARCH_CAMPAIGN_FILINGS = {
+    "type": "function",
+    "function": {
+        "name": "search_campaign_filings",
+        "description": "Search campaign finance filings (Form 460, 410, 496, 497, etc.) by form type, filer, or date range.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search by form name or type",
+                },
+                "form_type": {
+                    "type": "string",
+                    "description": "Filter by form type (e.g., 'Form 460')",
+                },
+                "filer_id": {
+                    "type": "string",
+                    "description": "Filter by filer UUID",
+                },
+                "date_from": {
+                    "type": "string",
+                    "description": "Start date YYYY-MM-DD",
+                },
+                "date_to": {
+                    "type": "string",
+                    "description": "End date YYYY-MM-DD",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 20)",
+                    "default": 20,
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+GET_CAMPAIGN_STATS = {
+    "type": "function",
+    "function": {
+        "name": "get_campaign_stats",
+        "description": "Get campaign finance statistics: total filers, filings, transactions, contributions, expenditures, elections.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+}
+
+SEARCH_CAMPAIGN_PEOPLE = {
+    "type": "function",
+    "function": {
+        "name": "search_campaign_people",
+        "description": "Search people in the campaign finance system — candidates, treasurers, donors, and payees.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Name to search for",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 20)",
+                    "default": 20,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Facebook-Monitor tools
+# ---------------------------------------------------------------------------
+
+SEARCH_MONITORED_POSTS = {
+    "type": "function",
+    "function": {
+        "name": "search_monitored_posts",
+        "description": "Search posts collected from monitored public Facebook pages. Returns posts with comments, page name, author, and engagement data.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search term to find in posts and comments",
+                },
+                "page_name": {
+                    "type": "string",
+                    "description": "Filter by Facebook page name",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 10)",
+                    "default": 10,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+GET_MONITORED_POST = {
+    "type": "function",
+    "function": {
+        "name": "get_monitored_post",
+        "description": "Get a specific monitored Facebook post with its comments, attachments, and linked people.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "post_id": {
+                    "type": "string",
+                    "description": "The Facebook post ID",
+                },
+            },
+            "required": ["post_id"],
+        },
+    },
+}
+
+SEARCH_MONITORED_PEOPLE = {
+    "type": "function",
+    "function": {
+        "name": "search_monitored_people",
+        "description": "Search people tracked across monitored Facebook pages (post authors, commenters, page operators).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Name to search for",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+LIST_MONITORED_PAGES = {
+    "type": "function",
+    "function": {
+        "name": "list_monitored_pages",
+        "description": "Get statistics about the Facebook Monitor: total posts, comments, monitored pages, tracked people, and entities.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+}
+
+GET_FB_MONITOR_ENTITIES = {
+    "type": "function",
+    "function": {
+        "name": "get_fb_monitor_entities",
+        "description": "Search entities (organizations/groups) tracked in the Facebook Monitor, with linked pages and people.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Entity name to search for",
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # Cross-spoke semantic search (LazyChroma RAG)
 # ---------------------------------------------------------------------------
 
@@ -516,7 +784,7 @@ SEMANTIC_SEARCH = {
                     "type": "array",
                     "items": {
                         "type": "string",
-                        "enum": ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra"],
+                        "enum": ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra", "facebook_monitor", "campaign_finance"],
                     },
                     "description": "Which data sources to search (default: all active)",
                 },
@@ -540,8 +808,10 @@ ARTICLE_TRACKER_TOOLS = [SEARCH_ARTICLES, GET_ARTICLE_STATS, GET_RECENT_ARTICLES
 SHASTA_DB_TOOLS = [SEARCH_FILES, LIST_ARCHIVE_PEOPLE, GET_FILE_INFO]
 FACEBOOK_OFFLINE_TOOLS = [SEARCH_MESSAGES, SEARCH_POSTS, LIST_THREADS, GET_THREAD_MESSAGES, SEARCH_PEOPLE_FB]
 SHASTA_PRA_TOOLS = [SEARCH_PRA_REQUESTS, GET_PRA_REQUEST, LIST_PRA_DEPARTMENTS, GET_PRA_STATS, SEARCH_PRA_ALL]
+FACEBOOK_MONITOR_TOOLS = [SEARCH_MONITORED_POSTS, GET_MONITORED_POST, SEARCH_MONITORED_PEOPLE, LIST_MONITORED_PAGES, GET_FB_MONITOR_ENTITIES]
+CAMPAIGN_FINANCE_TOOLS = [SEARCH_CAMPAIGN_FILERS, GET_CAMPAIGN_FILER, SEARCH_CAMPAIGN_TRANSACTIONS, SEARCH_CAMPAIGN_FILINGS, GET_CAMPAIGN_STATS, SEARCH_CAMPAIGN_PEOPLE]
 
-ALL_TOOLS = CIVIC_MEDIA_TOOLS + ARTICLE_TRACKER_TOOLS + SHASTA_DB_TOOLS + FACEBOOK_OFFLINE_TOOLS + SHASTA_PRA_TOOLS
+ALL_TOOLS = CIVIC_MEDIA_TOOLS + ARTICLE_TRACKER_TOOLS + SHASTA_DB_TOOLS + FACEBOOK_OFFLINE_TOOLS + SHASTA_PRA_TOOLS + FACEBOOK_MONITOR_TOOLS + CAMPAIGN_FINANCE_TOOLS
 
 # Map tool name → spoke key for routing
 TOOL_TO_SPOKE: dict[str, str] = {}
@@ -555,3 +825,7 @@ for tool in FACEBOOK_OFFLINE_TOOLS:
     TOOL_TO_SPOKE[tool["function"]["name"]] = "facebook_offline"
 for tool in SHASTA_PRA_TOOLS:
     TOOL_TO_SPOKE[tool["function"]["name"]] = "shasta_pra"
+for tool in FACEBOOK_MONITOR_TOOLS:
+    TOOL_TO_SPOKE[tool["function"]["name"]] = "facebook_monitor"
+for tool in CAMPAIGN_FINANCE_TOOLS:
+    TOOL_TO_SPOKE[tool["function"]["name"]] = "campaign_finance"

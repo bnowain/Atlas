@@ -55,6 +55,9 @@ Once an LLM is running:
 - Articles page — needs article-tracker running on port 5000
 - Files page — needs Shasta-DB running on port 8844
 - Messages page — needs Facebook-Offline running on port 8147
+- PRA page — needs Shasta-PRA-Backup running on port 8845
+- Facebook Monitor page — needs Facebook-Monitor running on port 8150
+- Campaign Finance page — needs Shasta-Campaign-Finance running on port 8855
 - Each spoke page fetches through the Atlas proxy
 
 #### 4. Start Other Spokes
@@ -62,6 +65,9 @@ For full testing, start the other spoke apps:
 - `cd E:\0-Automated-Apps\article-tracker` — check how to start (Flask, port 5000)
 - `cd E:\0-Automated-Apps\Shasta-DB` — FastAPI, port 8844
 - `cd E:\0-Automated-Apps\Facebook-Offline` — FastAPI, port 8147
+- `cd E:\0-Automated-Apps\Shasta-PRA-Backup` — FastAPI, port 8845
+- `cd E:\0-Automated-Apps\Facebook-Monitor` — FastAPI, port 8150 (`python -m web_ui`)
+- `cd E:\0-Automated-Apps\Shasta-Campaign-Finance` — FastAPI, port 8855
 
 #### 5. Frontend Polish
 - Search page needs the `/api/search` backend tested with live spokes

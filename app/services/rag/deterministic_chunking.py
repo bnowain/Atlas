@@ -119,6 +119,38 @@ def _chunk_shasta_pra(source_type: str, source_id: str, text: str, metadata: dic
     return _sliding_window_chunks(source_type, source_id, full_text, metadata)
 
 
+def _chunk_facebook_monitor(source_type: str, source_id: str, text: str, metadata: dict) -> list[Chunk]:
+    """Page/author metadata prefix + sliding window for Facebook Monitor posts."""
+    prefix = ""
+    if metadata.get("page_name"):
+        prefix = f"Page: {metadata['page_name']}\n"
+    if metadata.get("author"):
+        prefix += f"Author: {metadata['author']}\n"
+    if metadata.get("date"):
+        prefix += f"Date: {metadata['date']}\n"
+    if prefix:
+        prefix += "\n"
+
+    full_text = prefix + text
+    return _sliding_window_chunks(source_type, source_id, full_text, metadata)
+
+
+def _chunk_campaign_finance(source_type: str, source_id: str, text: str, metadata: dict) -> list[Chunk]:
+    """Transaction/filer metadata prefix + sliding window for campaign finance records."""
+    prefix = ""
+    if metadata.get("entity_name"):
+        prefix = f"Entity: {metadata['entity_name']}\n"
+    if metadata.get("schedule"):
+        prefix += f"Schedule: {metadata['schedule']}\n"
+    if metadata.get("date"):
+        prefix += f"Date: {metadata['date']}\n"
+    if prefix:
+        prefix += "\n"
+
+    full_text = prefix + text
+    return _sliding_window_chunks(source_type, source_id, full_text, metadata)
+
+
 def _chunk_generic(source_type: str, source_id: str, text: str, metadata: dict) -> list[Chunk]:
     """Fallback: sliding window chunks."""
     return _sliding_window_chunks(source_type, source_id, text, metadata)
@@ -174,4 +206,6 @@ _STRATEGIES = {
     "shasta_db": _chunk_shasta_db,
     "facebook_offline": _chunk_facebook_offline,
     "shasta_pra": _chunk_shasta_pra,
+    "facebook_monitor": _chunk_facebook_monitor,
+    "campaign_finance": _chunk_campaign_finance,
 }

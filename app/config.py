@@ -60,6 +60,18 @@ SPOKES: dict[str, SpokeConfig] = {
         base_url="http://localhost:8845",
         health_path="/api/health",
     ),
+    "facebook_monitor": SpokeConfig(
+        key="facebook_monitor",
+        name="Facebook Monitor",
+        base_url="http://localhost:8150",
+        health_path="/api/health",
+    ),
+    "campaign_finance": SpokeConfig(
+        key="campaign_finance",
+        name="Campaign Finance",
+        base_url="http://localhost:8855",
+        health_path="/api/health",
+    ),
 }
 
 # ---------------------------------------------------------------------------

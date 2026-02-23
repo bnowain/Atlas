@@ -15,7 +15,7 @@ from app.services.rag.retrieval_validator import _fetch_from_spoke
 
 logger = logging.getLogger(__name__)
 
-ALL_SOURCE_TYPES = ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra"]
+ALL_SOURCE_TYPES = ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra", "facebook_monitor", "campaign_finance"]
 
 
 async def pre_index(source_type: str | None = None) -> dict:
