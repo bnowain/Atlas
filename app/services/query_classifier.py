@@ -26,6 +26,13 @@ _SPOKE_KEYWORDS: dict[str, list[str]] = {
         "meeting", "meetings", "transcript", "transcripts", "speaker", "speakers",
         "diarization", "voiceprint", "council", "commission", "agenda", "minutes",
         "public comment", "city council", "planning commission", "board of supervisors",
+        # votes / meeting minutes
+        "vote", "votes", "voted", "voting", "motion", "resolution", "dissent",
+        "rollcall", "roll call", "tally", "aye", "nay", "supervisor vote",
+        "unanimously", "carried", "failed motion", "consent calendar",
+        # Brown Act / open meetings law
+        "brown act", "open meeting", "open meetings", "closed session", "serial meeting",
+        "agenda posting", "public comment denied", "open government",
     ],
     "article_tracker": [
         "article", "articles", "news", "headline", "headlines", "reporter",

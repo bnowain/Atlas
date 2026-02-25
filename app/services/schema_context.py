@@ -17,35 +17,61 @@ from __future__ import annotations
 SCHEMA_BLOCKS: dict[str, str] = {
 
     "civic_media": """\
-## Schema: civic_media — Government Meetings & Radio/Podcast Transcripts
-Data: Transcribed Shasta County public meetings (Board of Supervisors, City Council, Planning Commission, etc.) and radio/podcast audio.
+## Schema: civic_media — Government Meetings, Transcripts, Votes & Brown Act Reference
+Data: Transcribed Shasta County public meetings (Board of Supervisors, City Council, Planning
+Commission, etc.), radio/podcast audio, structured vote records parsed from meeting minutes,
+and the Brown Act (CA open meetings law, stored section-by-section for lookup).
 
-KEY ID FORMAT: meeting_id is a UUID string — always pass as string e.g. "f9077e9b-d0c1-4875-a482-bb6c77a96cde"
+KEY ID FORMAT: meeting_id is a UUID string — always pass as string.
 person_id is also a UUID string, not an integer.
 
 MEETINGS:
-- category: "meeting" (gov bodies) | "audio" (radio shows, KCNR, podcasts, ingest sources)
+- category: "meeting" (gov bodies) | "audio" (radio shows, KCNR, podcasts)
 - governing_body: "Board of Supervisors" | "Redding City Council" | "Planning Commission" | etc.
 - meeting_date: YYYY-MM-DD
-- summary_short / summary_long: AI summaries — use to survey a meeting without reading the transcript
+- summary_short / summary_long: AI summaries — use to survey a meeting without reading full transcript
 
 TRANSCRIPT SEGMENTS (one per spoken turn):
 - text: transcribed speech, start_time/end_time in seconds
-- raw_speaker_label: "SPEAKER_00", "SPEAKER_01" — raw diarization output
-- speaker resolved via segment_assignments → people (verified=True = human-confirmed)
+- Speaker resolved via segment_assignments → people (verified=True = human-confirmed)
 
-TAGS & SUMMARIES: meetings and segments have tag_assignments (content_type="meeting"|"segment")
-and AI-generated summaries. Tags link by tag_name; summaries are in summary_short/summary_long.
+MEETING VOTES (parsed from minutes PDFs — structured fact layer):
+- One row per motion in meeting_votes; one row per supervisor in vote_members
+- outcome: "Unanimously Carried" | "Carried" | "Failed" | "No Second" | etc.
+- vote_value per member: "yes" | "no" | "abstain" | "absent"
+- agenda_section: e.g. "Consent Calendar", "Regular Agenda"
+- mover / seconder: supervisor last name
+
+VOTE RESEARCH:
+1. get_meeting_votes(meeting_id) → all votes for a specific meeting with per-supervisor breakdown
+2. search_votes(member=name, vote_value="no", outcome=text, start_date=YYYY-MM-DD, end_date=YYYY-MM-DD,
+   governing_body=text, section=text, limit=N) → cross-meeting vote search
+   - member= matches supervisor last name (e.g. "Crye", "Long", "Moty")
+   - vote_value= "yes"|"no"|"abstain"|"absent"
+   - Use this to answer: "How did Supervisor X vote on Y?", "All dissenting votes this year"
+
+BROWN ACT LOOKUP (CA open meetings law, stored by section):
+- search_brown_act(query=text, limit=N) → returns matching statutory sections (§54950–§54963)
+- Use when asked about: open meeting requirements, closed session rules, public comment rights,
+  agenda posting deadlines, serial meeting prohibition, disruption/removal procedures
+- Key sections: §54952.2=serial meetings, §54954.2=72hr agenda, §54954.3=public comment,
+  §54956.9=closed session litigation, §54957.95=disruption/removal
 
 MEETING SEARCH:
 - search_meetings(query=term) → searches title, summary, governing body text
-- Summaries (summary_short/summary_long) will carry subject tags once generated
+- To find a specific vote: search_meetings first to get meeting_id, then get_meeting_votes
 
 PEOPLE RESEARCH:
 1. search_speakers(query=name) → returns person_id (UUID string)
 2. get_speaker_appearances(person_id) → all meetings where they spoke (person→meetings)
 3. get_meeting_speakers(meeting_id) → all speakers at a specific meeting (meeting→people)
-4. get_transcript(meeting_id) → full transcript with speaker assignments and timestamps""",
+4. get_transcript(meeting_id) → full transcript with speaker assignments and timestamps
+
+TOOL CHAINING EXAMPLES:
+- "How did Crye vote on the CTCL grant?" → search_meetings("CTCL") → get_meeting_votes(meeting_id)
+- "All of Crye's no votes in 2025" → search_votes(member="Crye", vote_value="no", start_date="2025-01-01")
+- "What does the Brown Act say about closed sessions?" → search_brown_act("closed session")
+- "Was there a Brown Act violation at this meeting?" → get_meeting_votes + search_brown_act for context""",
 
     "campaign_finance": """\
 ## Schema: campaign_finance — FPPC Campaign Finance (Shasta County, via NetFile)

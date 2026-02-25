@@ -1,101 +1,72 @@
-# Atlas — Next Steps
+# Atlas — TODO
 
-## Session Status (2026-02-20)
+## Immediate (next session)
 
-### What's Working
-- FastAPI backend on port 8888 with all routes (health, spoke proxy, chat, settings, search, people, pipeline)
-- Spoke proxy to civic_media (follow_redirects fix applied, tested with meetings + transcript)
-- React frontend (Vite dev on 5173, production build serves from 8888)
-- Dashboard with spoke status cards
-- Meetings page loads from civic_media proxy, links open correct review page
-- SQLite database at `database/atlas.db` with WAL mode
-- All models defined (LLMProvider, Conversation, ConversationMessage, UnifiedPerson, PersonMapping)
-- Settings page UI for managing external LLM providers (add/edit/delete/test/toggle)
-- Chat UI with SSE streaming, tool call indicators, conversation history
+### Test the votes pipeline end-to-end
+1. Start Atlas + civic_media
+2. Run `python seed_tags.py` from civic_media root (new tags not seeded yet)
+3. Run `python scripts/ingest_brown_act.py` (Brown Act PDF → DB)
+4. Run `python scripts/ingest_minutes_votes.py` (votes backfill)
+5. Test via chat:
+   - "How did Crye vote on the CTCL grant?"
+   - "All dissenting votes by Supervisor Long in 2025"
+   - "What does the Brown Act say about public comment rights?"
+   - "Was there a Brown Act violation in this meeting?" + meeting_id
 
-### What Needs Doing
+### Summary ingest pipeline (civic_media, not Atlas)
+Parse `---TAGS-*:` footer from LLM summaries → create tag_assignments records → strip footer
+before storing summary text in `summary_short`/`summary_long`. Not yet built.
 
-#### 1. Get a Local LLM Running (BLOCKED)
-WSL2 networking is broken — ICMP works but TCP connections to the internet hang. Two options:
+## Short Term
 
-**Option A: Fix WSL2 networking**
-- Outbound TCP from WSL2 doesn't work (ping 8.8.8.8 works, curl hangs)
-- Could be Windows Firewall, VPN, or WSL2 mirrored networking issue
-- Once fixed: `source ~/vllm-env/bin/activate && pip install vllm` then run scripts/vllm-start.sh
-- A venv already exists at `~/vllm-env` in WSL2 Ubuntu
+### Add instruction_manager to route queries better
+The `instruction_manager` is imported in `chat_pipeline.py` but the default instruction
+system isn't fully wired. Add:
+- A default "civic accountability" instruction that primes the LLM on local context
+  (who the supervisors are, what governing bodies exist, what the key issues are)
+- Per-conversation instruction override via chat UI
 
-**Option B: Use Ollama instead (RECOMMENDED)**
-- Install Ollama from https://ollama.com (Windows native, uses GPU directly)
-- `ollama pull qwen2.5:7b` — downloads the 7B model
-- Auto-serves OpenAI-compatible API at http://localhost:11434/v1
-- Update `app/config.py` LLM_PROFILES to point to Ollama:
-  ```python
-  "fast": LLMProfile(
-      name="atlas-fast",
-      base_url="http://localhost:11434/v1",
-      model="qwen2.5:7b",
-  ),
-  ```
-- No WSL2 needed, no networking issues
+### Brown Act RAG embedding
+`reference_sections` rows are in civic_media DB but not yet embedded into ChromaDB.
+Add `reference_sections` as a source type in Atlas `POST /api/rag/pre-index`.
+Steps:
+1. Add `_chunk_reference_sections()` to `rag/deterministic_chunking.py`
+2. Add fetch handler in `rag/retrieval_validator.py`
+3. Add `"reference_sections"` to `ALL_SOURCE_TYPES` in `rag/pre_index.py`
+4. Run `POST /api/rag/pre-index` with source_type=reference_sections
 
-**Option C: External API (quickest)**
-- Open http://localhost:5173/settings
-- Add a Claude/OpenAI/DeepSeek API key
-- Chat works immediately
+### Votes in RAG pre-index
+Consider whether vote records should be embedded for semantic search.
+Likely approach: embed the `item_description` + outcome as a chunk,
+tagged with meeting_id, governing_body, date, members.
 
-#### 2. Test Chat End-to-End
-Once an LLM is running:
-- Send a message like "What meetings have been processed?"
-- Verify: query classifier routes to civic_media tools
-- Verify: LLM calls search_meetings tool
-- Verify: tool executor hits civic_media API
-- Verify: response streams back via SSE
+### Instruction system (default instructions + user overrides)
+Currently `instruction_manager` exists but instructions aren't serving as LLM priming.
+Build:
+- Default system instruction stored in DB (editable via UI)
+- Per-conversation instruction override
+- Civic context block: list of supervisors by district, key agencies, recurring issues
 
-#### 3. Test Other Spoke Pages
-- Articles page — needs article-tracker running on port 5000
-- Files page — needs Shasta-DB running on port 8844
-- Messages page — needs Facebook-Offline running on port 8147
-- PRA page — needs Shasta-PRA-Backup running on port 8845
-- Facebook Monitor page — needs Facebook-Monitor running on port 8150
-- Campaign Finance page — needs Shasta-Campaign-Finance running on port 8855
-- Each spoke page fetches through the Atlas proxy
+## Medium Term
 
-#### 4. Start Other Spokes
-For full testing, start the other spoke apps:
-- `cd E:\0-Automated-Apps\article-tracker` — check how to start (Flask, port 5000)
-- `cd E:\0-Automated-Apps\Shasta-DB` — FastAPI, port 8844
-- `cd E:\0-Automated-Apps\Facebook-Offline` — FastAPI, port 8147
-- `cd E:\0-Automated-Apps\Shasta-PRA-Backup` — FastAPI, port 8845
-- `cd E:\0-Automated-Apps\Facebook-Monitor` — FastAPI, port 8150 (`python -m web_ui`)
-- `cd E:\0-Automated-Apps\Shasta-Campaign-Finance` — FastAPI, port 8855
+### Cross-spoke timeline
+Given a person name, pull their activity across all spokes sorted by date:
+- civic_media: meetings they spoke at
+- campaign_finance: filings/contributions by date
+- article_tracker: news coverage by date
+- shasta_pra: PRA requests filed/received by date
 
-#### 5. Frontend Polish
-- Search page needs the `/api/search` backend tested with live spokes
-- People page — empty until unified person records are created
-- Chat model selector dropdown (pick local profile or external provider per conversation)
-- Inline media players in chat responses (video/audio from civic_media proxy)
+### Agenda alignment (civic_media)
+Match parsed agenda items to transcript segments so votes can be linked to specific
+transcript segments and timestamps.
 
-#### 6. Cross-App Features (Phase 4)
-- Test unified search across multiple spokes
-- Test media pipeline (Shasta-DB file → civic_media transcription)
-- Test person discovery and cross-app identity linking
+### Summary ingest endpoint (civic_media)
+`POST /api/meetings/{id}/summary/ingest` — parses `---TAGS-*:` footer, creates
+tag_assignments, strips footer, stores prose only.
 
-### How to Start Atlas
-```bash
-# Terminal 1 — Backend
-cd E:\0-Automated-Apps\Atlas
-python start.py
+## Known Issues
 
-# Terminal 2 — Frontend (hot reload)
-cd E:\0-Automated-Apps\Atlas\frontend
-npm run dev
-
-# Terminal 3 — civic_media (or other spokes)
-cd E:\0-Automated-Apps\civic_media
-uvicorn app.main:app --port 8000
-```
-
-### Known Issues
-- Multiple `python start.py` invocations create zombie processes on port 8888 that are hard to kill. Use `python start.py` WITHOUT `--reload` to avoid orphaned reloader children. Kill with: `powershell -Command "Get-Process python* | Stop-Process -Force"`
-- WSL2 Ubuntu has no outbound TCP (only ICMP). Needs investigation or just use Ollama.
-- Shasta-DB port in config is 8844 — verify this matches the actual Shasta-DB startup port
+- Multiple `python run.py` invocations create zombie processes. Kill with:
+  `powershell -Command "Get-Process python* | Stop-Process -Force"`
+- Shasta-DB port 8844 — verify matches actual startup port
+- `shasta_db` `get_file_info` handler partially broken (falls back to search)
