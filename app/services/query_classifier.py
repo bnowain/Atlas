@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from app.services.tools import (
     CIVIC_MEDIA_TOOLS, ARTICLE_TRACKER_TOOLS, SHASTA_DB_TOOLS, FACEBOOK_OFFLINE_TOOLS,
     SHASTA_PRA_TOOLS, FACEBOOK_MONITOR_TOOLS, CAMPAIGN_FINANCE_TOOLS, ALL_TOOLS,
-    SEMANTIC_SEARCH,
+    SEMANTIC_SEARCH, SEARCH_ATLAS_PEOPLE,
 )
 
 
@@ -57,6 +57,13 @@ _SPOKE_KEYWORDS: dict[str, list[str]] = {
     ],
 }
 
+# Person-research keywords — trigger all spokes since a person can appear anywhere
+_PERSON_RESEARCH_KEYWORDS = [
+    "who is", "who was", "tell me about", "what do you know about", "profile of",
+    "background on", "research", "anything on", "everything about", "find out about",
+    "what has", "what did", "has anyone", "did anyone", "find everything",
+]
+
 # Profile selection keywords
 _QUALITY_KEYWORDS = [
     "analyze", "explain", "summarize", "compare", "assessment", "detail",
@@ -89,6 +96,9 @@ def classify(query: str, allowed_spokes: list[str] | None = None) -> Classificat
 
     query_lower = query.lower()
 
+    # Check for person-research query (e.g. "who is X", "tell me about X")
+    is_person_research = any(kw in query_lower for kw in _PERSON_RESEARCH_KEYWORDS)
+
     # Score each spoke (only consider allowed ones)
     spoke_scores: dict[str, int] = {}
     for spoke, keywords in _SPOKE_KEYWORDS.items():
@@ -100,22 +110,30 @@ def classify(query: str, allowed_spokes: list[str] | None = None) -> Classificat
 
     # Select matched spokes
     if spoke_scores:
-        # Sort by score descending, take top spokes
         sorted_spokes = sorted(spoke_scores.items(), key=lambda x: x[1], reverse=True)
-        # Take all spokes with scores within 50% of the top score
         top_score = sorted_spokes[0][1]
         matched_spokes = [s for s, score in sorted_spokes if score >= top_score * 0.5]
     else:
         matched_spokes = []
+
+    # Person-research queries expand to all spokes — a person can appear anywhere
+    if is_person_research:
+        all_allowed = list(_SPOKE_KEYWORDS.keys()) if allowed_spokes is None else allowed_spokes
+        for spoke in all_allowed:
+            if spoke not in matched_spokes:
+                matched_spokes.append(spoke)
 
     # Build tool set
     if matched_spokes:
         tools = []
         for spoke in matched_spokes:
             tools.extend(_SPOKE_TOOLS[spoke])
-        # Include semantic search when any spokes are active
+        # Always include cross-spoke tools when any spokes are active
+        tools.append(SEARCH_ATLAS_PEOPLE)
         tools.append(SEMANTIC_SEARCH)
         confidence = min(0.9, 0.5 + 0.1 * sum(spoke_scores.values()))
+        if is_person_research:
+            confidence = max(confidence, 0.8)
     else:
         # No keyword match — let the LLM answer from its own knowledge
         tools = []

@@ -46,10 +46,16 @@ async def _search_meetings(args: dict) -> dict:
     if resp.status_code != 200:
         return {"success": False, "error": f"HTTP {resp.status_code}"}
     meetings = resp.json()
-    # Simple client-side filter if query provided
     query = args.get("query", "").lower()
     if query:
-        meetings = [m for m in meetings if query in (m.get("title", "") or "").lower()]
+        def _matches(m: dict) -> bool:
+            return (
+                query in (m.get("title", "") or "").lower()
+                or query in (m.get("summary_short", "") or "").lower()
+                or query in (m.get("governing_body", "") or "").lower()
+                or query in (m.get("description", "") or "").lower()
+            )
+        meetings = [m for m in meetings if _matches(m)]
     limit = args.get("limit", 10)
     return {"success": True, "data": meetings[:limit]}
 
@@ -80,6 +86,57 @@ async def _get_speaker_appearances(args: dict) -> dict:
     return {"success": True, "data": resp.json()}
 
 
+async def _get_meeting_speakers(args: dict) -> dict:
+    """Extract the distinct speakers from a meeting's segment assignments."""
+    mid = args["meeting_id"]
+    resp = await spoke_client.get("civic_media", f"/api/segments/{mid}")
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    segments = resp.json()
+
+    # Tally segment counts per person
+    segment_counts: dict[str, int] = {}
+    verified_counts: dict[str, int] = {}
+    for seg in segments:
+        assignment = seg.get("assignment")
+        if assignment and assignment.get("predicted_person_id"):
+            pid = assignment["predicted_person_id"]
+            segment_counts[pid] = segment_counts.get(pid, 0) + 1
+            if assignment.get("verified"):
+                verified_counts[pid] = verified_counts.get(pid, 0) + 1
+
+    if not segment_counts:
+        return {
+            "success": True,
+            "data": [],
+            "total_segments": len(segments),
+            "message": "No identified speakers found in this meeting's transcript.",
+        }
+
+    # Fetch all people to resolve names in one call
+    people_resp = await spoke_client.get("civic_media", "/api/people")
+    people_map: dict[str, str] = {}
+    if people_resp.status_code == 200:
+        for p in people_resp.json():
+            people_map[p["person_id"]] = p["canonical_name"]
+
+    speakers = [
+        {
+            "person_id": pid,
+            "name": people_map.get(pid, f"Unknown ({pid[:8]}...)"),
+            "segment_count": count,
+            "verified_segments": verified_counts.get(pid, 0),
+        }
+        for pid, count in sorted(segment_counts.items(), key=lambda x: -x[1])
+    ]
+    return {
+        "success": True,
+        "data": speakers,
+        "total_speakers": len(speakers),
+        "total_segments": len(segments),
+    }
+
+
 async def _export_transcript(args: dict) -> dict:
     mid = args["meeting_id"]
     fmt = args.get("format", "txt")
@@ -91,6 +148,33 @@ async def _export_transcript(args: dict) -> dict:
     if "json" in content_type:
         return {"success": True, "data": resp.json()}
     return {"success": True, "data": resp.text[:5000]}  # cap large exports
+
+
+async def _get_meeting_votes(args: dict) -> dict:
+    mid = args["meeting_id"]
+    resp = await spoke_client.get("civic_media", f"/api/votes/{mid}")
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _search_votes(args: dict) -> dict:
+    params = {k: v for k, v in args.items() if v is not None}
+    resp = await spoke_client.get("civic_media", "/api/votes", params=params)
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
+
+
+async def _search_brown_act(args: dict) -> dict:
+    params: dict = {}
+    if args.get("query"):
+        params["q"] = args["query"]
+    params["limit"] = args.get("limit", 5)
+    resp = await spoke_client.get("civic_media", "/api/reference/brown-act/sections", params=params)
+    if resp.status_code != 200:
+        return {"success": False, "error": f"HTTP {resp.status_code}"}
+    return {"success": True, "data": resp.json()}
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +430,66 @@ async def _get_fb_monitor_entities(args: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Atlas unified people search
+# ---------------------------------------------------------------------------
+
+async def _search_atlas_people(args: dict) -> dict:
+    """Query Atlas's unified_people + person_mappings tables directly."""
+    from app.database import AsyncSessionLocal
+    from app.models import UnifiedPerson, PersonMapping
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    query = args.get("query", "").strip().lower()
+    if not query:
+        return {"success": False, "error": "query is required"}
+
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(UnifiedPerson)
+                .options(selectinload(UnifiedPerson.mappings))
+                .order_by(UnifiedPerson.display_name)
+            )
+            all_people = result.scalars().all()
+
+        matched = [p for p in all_people if query in p.display_name.lower()]
+
+        if not matched:
+            return {
+                "success": True,
+                "data": [],
+                "message": (
+                    f"No unified person record found for '{args['query']}'. "
+                    "They may exist in individual spokes but haven't been linked yet. "
+                    "Search each relevant spoke directly by name."
+                ),
+            }
+
+        formatted = []
+        for p in matched[:20]:
+            formatted.append({
+                "unified_id": p.id,
+                "name": p.display_name,
+                "notes": p.notes or "",
+                "spoke_records": [
+                    {
+                        "spoke": m.spoke_key,
+                        "spoke_person_id": m.spoke_person_id,
+                        "spoke_person_name": m.spoke_person_name,
+                    }
+                    for m in p.mappings
+                ],
+            })
+
+        return {"success": True, "data": formatted, "total": len(formatted)}
+
+    except Exception as exc:
+        logger.exception("Atlas people search error")
+        return {"success": False, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
 # Semantic search (LazyChroma RAG)
 # ---------------------------------------------------------------------------
 
@@ -438,7 +582,11 @@ _TOOL_HANDLERS = {
     "get_transcript": _get_transcript,
     "search_speakers": _search_speakers,
     "get_speaker_appearances": _get_speaker_appearances,
+    "get_meeting_speakers": _get_meeting_speakers,
     "export_transcript": _export_transcript,
+    "get_meeting_votes": _get_meeting_votes,
+    "search_votes": _search_votes,
+    "search_brown_act": _search_brown_act,
     # article-tracker
     "search_articles": _search_articles,
     "get_article_stats": _get_article_stats,
@@ -472,6 +620,7 @@ _TOOL_HANDLERS = {
     "search_monitored_people": _search_monitored_people,
     "list_monitored_pages": _list_monitored_pages,
     "get_fb_monitor_entities": _get_fb_monitor_entities,
-    # Cross-spoke semantic search
+    # Cross-spoke tools
+    "search_atlas_people": _search_atlas_people,
     "semantic_search": _semantic_search,
 }

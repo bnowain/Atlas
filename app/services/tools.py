@@ -38,8 +38,8 @@ GET_TRANSCRIPT = {
             "type": "object",
             "properties": {
                 "meeting_id": {
-                    "type": "integer",
-                    "description": "The meeting ID",
+                    "type": "string",
+                    "description": "The meeting UUID string e.g. 'f9077e9b-d0c1-4875-a482-bb6c77a96cde'",
                 },
             },
             "required": ["meeting_id"],
@@ -74,11 +74,130 @@ GET_SPEAKER_APPEARANCES = {
             "type": "object",
             "properties": {
                 "person_id": {
-                    "type": "integer",
-                    "description": "The person ID from civic_media",
+                    "type": "string",
+                    "description": "The person UUID string from civic_media (returned by search_speakers)",
                 },
             },
             "required": ["person_id"],
+        },
+    },
+}
+
+GET_MEETING_SPEAKERS = {
+    "type": "function",
+    "function": {
+        "name": "get_meeting_speakers",
+        "description": (
+            "Get the list of identified speakers at a specific meeting, with segment counts. "
+            "Use this to find out who participated in a particular meeting. "
+            "Returns speaker names, person IDs, and how many segments they were assigned."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "meeting_id": {
+                    "type": "string",
+                    "description": "The meeting UUID string e.g. 'f9077e9b-d0c1-4875-a482-bb6c77a96cde'",
+                },
+            },
+            "required": ["meeting_id"],
+        },
+    },
+}
+
+GET_MEETING_VOTES = {
+    "type": "function",
+    "function": {
+        "name": "get_meeting_votes",
+        "description": (
+            "Get all formal votes recorded in the official minutes for a specific meeting. "
+            "Returns each motion with its outcome (Unanimously Carried, Carried, Failed, etc.), "
+            "vote tally (e.g. 4-1), mover, seconder, and how each supervisor voted. "
+            "Use this when a user asks how someone voted, what passed/failed, or wants "
+            "the official vote record rather than the transcript summary."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "meeting_id": {
+                    "type": "string",
+                    "description": "The meeting UUID string",
+                },
+            },
+            "required": ["meeting_id"],
+        },
+    },
+}
+
+SEARCH_VOTES = {
+    "type": "function",
+    "function": {
+        "name": "search_votes",
+        "description": (
+            "Search vote records across meetings. Use this to answer questions like "
+            "'how did Crye vote on budget items', 'show all failed motions in 2025', "
+            "or 'what did Harmon vote no on'. Filters by supervisor name, vote value, "
+            "outcome type, date range, or agenda section."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "member": {
+                    "type": "string",
+                    "description": "Supervisor last name to filter by",
+                },
+                "vote_value": {
+                    "type": "string",
+                    "enum": ["yes", "no", "abstain", "absent"],
+                    "description": "Filter by how this member voted",
+                },
+                "outcome": {
+                    "type": "string",
+                    "description": "Outcome filter, e.g. 'Failed — No Second', 'Carried', 'Unanimously Carried'",
+                },
+                "start_date": {
+                    "type": "string",
+                    "description": "Start date YYYY-MM-DD",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": "End date YYYY-MM-DD",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 50)",
+                    "default": 50,
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+SEARCH_BROWN_ACT = {
+    "type": "function",
+    "function": {
+        "name": "search_brown_act",
+        "description": (
+            "Search the Brown Act (California Government Code §54950–54963) by keyword "
+            "or section number. Use this when a user asks what the Brown Act says about "
+            "a specific topic, or when you need to reference a specific provision to "
+            "explain a potential violation noted in a meeting summary."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Keyword, topic, or section number (e.g. '54954.3', 'public comment', 'serial meeting')",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max sections to return (default 5)",
+                    "default": 5,
+                },
+            },
+            "required": ["query"],
         },
     },
 }
@@ -765,6 +884,33 @@ GET_FB_MONITOR_ENTITIES = {
 
 
 # ---------------------------------------------------------------------------
+# Atlas unified people search (cross-spoke identity)
+# ---------------------------------------------------------------------------
+
+SEARCH_ATLAS_PEOPLE = {
+    "type": "function",
+    "function": {
+        "name": "search_atlas_people",
+        "description": (
+            "Search Atlas's unified person directory. Returns which spokes have a record for this person "
+            "and their spoke-specific IDs, so you can query each spoke precisely. "
+            "Use this as the FIRST step when researching a person — it tells you where to look next."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Person name or partial name to search for",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # Cross-spoke semantic search (LazyChroma RAG)
 # ---------------------------------------------------------------------------
 
@@ -803,7 +949,7 @@ SEMANTIC_SEARCH = {
 # Aggregated tool sets
 # ---------------------------------------------------------------------------
 
-CIVIC_MEDIA_TOOLS = [SEARCH_MEETINGS, GET_TRANSCRIPT, SEARCH_SPEAKERS, GET_SPEAKER_APPEARANCES, EXPORT_TRANSCRIPT]
+CIVIC_MEDIA_TOOLS = [SEARCH_MEETINGS, GET_TRANSCRIPT, SEARCH_SPEAKERS, GET_SPEAKER_APPEARANCES, GET_MEETING_SPEAKERS, EXPORT_TRANSCRIPT, GET_MEETING_VOTES, SEARCH_VOTES, SEARCH_BROWN_ACT]
 ARTICLE_TRACKER_TOOLS = [SEARCH_ARTICLES, GET_ARTICLE_STATS, GET_RECENT_ARTICLES]
 SHASTA_DB_TOOLS = [SEARCH_FILES, LIST_ARCHIVE_PEOPLE, GET_FILE_INFO]
 FACEBOOK_OFFLINE_TOOLS = [SEARCH_MESSAGES, SEARCH_POSTS, LIST_THREADS, GET_THREAD_MESSAGES, SEARCH_PEOPLE_FB]
@@ -811,7 +957,9 @@ SHASTA_PRA_TOOLS = [SEARCH_PRA_REQUESTS, GET_PRA_REQUEST, LIST_PRA_DEPARTMENTS, 
 FACEBOOK_MONITOR_TOOLS = [SEARCH_MONITORED_POSTS, GET_MONITORED_POST, SEARCH_MONITORED_PEOPLE, LIST_MONITORED_PAGES, GET_FB_MONITOR_ENTITIES]
 CAMPAIGN_FINANCE_TOOLS = [SEARCH_CAMPAIGN_FILERS, GET_CAMPAIGN_FILER, SEARCH_CAMPAIGN_TRANSACTIONS, SEARCH_CAMPAIGN_FILINGS, GET_CAMPAIGN_STATS, SEARCH_CAMPAIGN_PEOPLE]
 
-ALL_TOOLS = CIVIC_MEDIA_TOOLS + ARTICLE_TRACKER_TOOLS + SHASTA_DB_TOOLS + FACEBOOK_OFFLINE_TOOLS + SHASTA_PRA_TOOLS + FACEBOOK_MONITOR_TOOLS + CAMPAIGN_FINANCE_TOOLS
+ATLAS_TOOLS = [SEARCH_ATLAS_PEOPLE, SEMANTIC_SEARCH]
+
+ALL_TOOLS = CIVIC_MEDIA_TOOLS + ARTICLE_TRACKER_TOOLS + SHASTA_DB_TOOLS + FACEBOOK_OFFLINE_TOOLS + SHASTA_PRA_TOOLS + FACEBOOK_MONITOR_TOOLS + CAMPAIGN_FINANCE_TOOLS + ATLAS_TOOLS
 
 # Map tool name → spoke key for routing
 TOOL_TO_SPOKE: dict[str, str] = {}

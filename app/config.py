@@ -214,8 +214,8 @@ class ServiceDefinition:
     name: str                           # Display name
     port: int | None                    # HTTP port (None for background workers)
     project_dir: str                    # Relative to APPS_ROOT
-    venv_relpath: str | None            # e.g. "venv/Scripts/python.exe", None = system python
-    start_args: list[str]               # Arguments after python.exe
+    venv_relpath: str | None            # e.g. "venv/Scripts/python.exe" or "venv/Scripts/celery.exe"
+    start_args: list[str]               # Arguments after the executable
     health_path: str | None             # URL path for health check (None for workers)
     shutdown_path: str | None           # URL path for graceful shutdown (None for workers)
     depends_on: list[str]               # Service keys that must be running first
@@ -259,8 +259,8 @@ SERVICE_DEFINITIONS: dict[str, ServiceDefinition] = {
         name="Civic Media Worker",
         port=None,
         project_dir="civic_media",
-        venv_relpath="venv/Scripts/python.exe",
-        start_args=["-m", "celery", "-A", "app.worker.celery_app", "worker",
+        venv_relpath="venv/Scripts/celery.exe",
+        start_args=["-A", "app.worker.celery_app", "worker",
                      "--loglevel=info", "--concurrency=1", "--pool=solo"],
         health_path=None,
         shutdown_path=None,

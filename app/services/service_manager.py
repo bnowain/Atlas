@@ -66,6 +66,7 @@ _processes: dict[str, subprocess.Popen | None] = {}
 _started_at: dict[str, float | None] = {}
 _restart_counts: dict[str, int] = {}
 _restart_timestamps: dict[str, list[float]] = {}
+_spawned_by_atlas: set[str] = set()       # services WE started (vs pre-existing)
 _lock = asyncio.Lock()
 _health_poll_task: asyncio.Task | None = None
 
@@ -96,14 +97,19 @@ _init_states()
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _resolve_python(svc: ServiceDefinition) -> str:
-    """Return the full path to the Python interpreter for a service."""
+def _resolve_executable(svc: ServiceDefinition) -> str:
+    """Return the full path to the executable for a service.
+
+    Usually a venv Python interpreter, but can also be a venv console script
+    like celery.exe — avoids the Windows problem where `python -m celery`
+    spawns a child celery.exe and the parent dies, losing PID tracking.
+    """
     project_dir = APPS_ROOT / svc.project_dir
     if svc.venv_relpath:
-        venv_python = project_dir / svc.venv_relpath
-        if venv_python.exists():
-            return str(venv_python)
-        logger.warning("Venv python not found at %s, falling back to system", venv_python)
+        exe_path = project_dir / svc.venv_relpath
+        if exe_path.exists():
+            return str(exe_path)
+        logger.warning("Venv executable not found at %s, falling back to system python", exe_path)
     return sys.executable
 
 
@@ -134,24 +140,121 @@ async def _check_health(url: str) -> bool:
 
 
 def _kill_port_occupant(port: int):
-    """Kill any process occupying a given port (Windows netstat + taskkill)."""
+    """Kill any process tree occupying a given port (Windows netstat + taskkill).
+
+    Uses /T to kill the entire process tree — uvicorn spawns child workers
+    that inherit the listening socket, so killing only the parent leaves
+    children alive holding the port.
+    """
     try:
         result = subprocess.run(
             ["netstat", "-aon", "-p", "TCP"],
             capture_output=True, text=True, timeout=5,
         )
+        killed = set()
         for line in result.stdout.splitlines():
             parts = line.split()
             if len(parts) >= 5 and f":{port}" in parts[1] and parts[3] == "LISTENING":
                 pid = int(parts[4])
-                if pid > 0:
+                if pid > 0 and pid not in killed:
                     subprocess.run(
-                        ["taskkill", "/PID", str(pid), "/F"],
+                        ["taskkill", "/PID", str(pid), "/T", "/F"],
                         capture_output=True, timeout=5,
                     )
-                    logger.info("Killed orphan PID %d on port %d", pid, port)
+                    killed.add(pid)
+                    logger.info("Killed orphan PID %d (tree) on port %d", pid, port)
     except Exception as e:
         logger.warning("Port cleanup failed for port %d: %s", port, e)
+
+
+def _worker_cmd_signature(svc: ServiceDefinition) -> str:
+    """Build a unique substring to identify this worker in process listings.
+
+    Matches the deepest real Python process, not the venv shim.
+    """
+    # Use the most distinctive args (e.g. "-A app.worker.celery_app worker")
+    return " ".join(svc.start_args[:3])
+
+
+def _find_real_worker_pid(svc: ServiceDefinition) -> int | None:
+    """Scan running processes to find the real worker PID by command line.
+
+    On Windows, venv launchers (python.exe, celery.exe) are thin shims that
+    spawn child processes and may exit. The real worker is the deepest child
+    in the chain — typically C:\\Python\\Python311\\python.exe running the
+    actual module code. We find it by matching command line args.
+    """
+    signature = _worker_cmd_signature(svc)
+    try:
+        result = subprocess.run(
+            ["powershell", "-Command",
+             f"Get-CimInstance Win32_Process | "
+             f"Where-Object {{ $_.CommandLine -like '*{signature}*' }} | "
+             f"Select-Object ProcessId, ParentProcessId, CommandLine | "
+             f"ConvertTo-Json"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if not result.stdout.strip():
+            return None
+
+        import json as _json
+        data = _json.loads(result.stdout)
+        # PowerShell returns a single object (not array) if only one match
+        if isinstance(data, dict):
+            data = [data]
+
+        # Find the deepest child: a process whose PID is NOT a parent of another
+        pids = {p["ProcessId"] for p in data}
+        parent_pids = {p["ParentProcessId"] for p in data}
+        # Leaf processes = those whose PID is not anyone else's parent
+        leaves = [p for p in data if p["ProcessId"] not in parent_pids]
+
+        if leaves:
+            # Prefer the one using the real Python (not venv shim)
+            for leaf in leaves:
+                cmd = leaf.get("CommandLine", "")
+                if "Python3" in cmd or "Python\\Python" in cmd:
+                    logger.debug("Found real worker PID %d: %s", leaf["ProcessId"], cmd[:120])
+                    return leaf["ProcessId"]
+            # Fallback to first leaf
+            return leaves[0]["ProcessId"]
+
+        # No leaves found, just return the first match
+        return data[0]["ProcessId"] if data else None
+    except Exception as e:
+        logger.warning("Failed to find real worker PID: %s", e)
+        return None
+
+
+def _kill_worker_processes(key: str, svc: ServiceDefinition):
+    """Kill all processes matching a worker's command line signature."""
+    signature = _worker_cmd_signature(svc)
+    try:
+        result = subprocess.run(
+            ["powershell", "-Command",
+             f"Get-CimInstance Win32_Process | "
+             f"Where-Object {{ $_.CommandLine -like '*{signature}*' }} | "
+             f"Select-Object ProcessId | ConvertTo-Json"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if not result.stdout.strip():
+            return
+
+        import json as _json
+        data = _json.loads(result.stdout)
+        if isinstance(data, dict):
+            data = [data]
+
+        for proc_info in data:
+            pid = proc_info["ProcessId"]
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True, timeout=5,
+            )
+        if data:
+            logger.info("Killed %d old worker process(es) for %s", len(data), key)
+    except Exception as e:
+        logger.warning("Worker cleanup failed for %s: %s", key, e)
 
 
 def _save_pids():
@@ -267,14 +370,43 @@ async def _start_docker_service(svc: ServiceDefinition, project_dir):
     logger.info("Docker service %s started", svc.key)
 
 
+def _purge_pycache(project_dir):
+    """Delete all __pycache__ dirs under the project's app/ folder.
+
+    Prevents stale .pyc bytecode from being loaded after source edits —
+    especially on Windows where mtime granularity can fool the cache.
+    """
+    import shutil
+    app_dir = project_dir / "app"
+    if not app_dir.is_dir():
+        return
+    count = 0
+    for cache_dir in app_dir.rglob("__pycache__"):
+        try:
+            shutil.rmtree(cache_dir)
+            count += 1
+        except Exception:
+            pass
+    if count:
+        logger.debug("Purged %d __pycache__ dirs under %s", count, app_dir)
+
+
 async def _start_process(key: str, svc: ServiceDefinition, project_dir):
     """Start a Python process for a service."""
-    # Kill any orphan on the port
+    # Purge stale bytecode cache before launching
+    await asyncio.get_event_loop().run_in_executor(None, _purge_pycache, project_dir)
+
+    # Kill any orphan — by port for web services, by command line for workers
     if svc.port:
         await asyncio.get_event_loop().run_in_executor(None, _kill_port_occupant, svc.port)
+    else:
+        # Workers have no port — kill by tracked PID or by command line scan
+        await asyncio.get_event_loop().run_in_executor(
+            None, _kill_worker_processes, key, svc,
+        )
 
-    python = _resolve_python(svc)
-    cmd = [python] + svc.start_args
+    exe = _resolve_executable(svc)
+    cmd = [exe] + svc.start_args
 
     log_file = SERVICE_LOG_DIR / f"{key}.log"
     env = {**os.environ, "PYTHONPATH": ".", "PYTHONUNBUFFERED": "1"}
@@ -324,6 +456,7 @@ async def _start_process(key: str, svc: ServiceDefinition, project_dir):
             async with _lock:
                 _states[key] = ServiceState.RUNNING
                 _started_at[key] = time.time()
+                _spawned_by_atlas.add(key)
             logger.info("Service %s started (PID %d, port %d)", key, proc.pid, svc.port)
         else:
             async with _lock:
@@ -331,20 +464,44 @@ async def _start_process(key: str, svc: ServiceDefinition, project_dir):
                 _errors[key] = "Health check timed out after 30s"
             logger.error("Service %s failed health check", key)
     else:
-        # Background worker — just check it's alive after 2s
-        await asyncio.sleep(2)
-        if proc.poll() is None:
+        # Background worker on Windows: the venv shim process exits quickly
+        # while the real worker runs as a grandchild. Poll for the actual
+        # worker PID by command line matching — workers like Celery can take
+        # 30+ seconds to finish initialization before they appear stable.
+        real_pid = None
+        poll_interval = 3
+        max_attempts = 15  # up to 45 seconds total
+        for attempt in range(max_attempts):
+            await asyncio.sleep(poll_interval)
+            if proc.poll() is not None:
+                # Shim process exited with an error — worker likely crashed
+                break
+            real_pid = await asyncio.get_event_loop().run_in_executor(
+                None, _find_real_worker_pid, svc,
+            )
+            if real_pid:
+                logger.debug(
+                    "Service %s: found worker PID %d after %ds",
+                    key, real_pid, (attempt + 1) * poll_interval,
+                )
+                break
+
+        if real_pid:
             async with _lock:
+                _pids[key] = real_pid
                 _states[key] = ServiceState.RUNNING
                 _started_at[key] = time.time()
-            logger.info("Service %s started (PID %d, worker)", key, proc.pid)
+                _spawned_by_atlas.add(key)
+            _save_pids()
+            logger.info("Service %s started (real PID %d, worker)", key, real_pid)
         else:
             async with _lock:
                 _states[key] = ServiceState.ERROR
-                _errors[key] = "Worker process exited immediately"
+                _errors[key] = f"Worker process not found after {max_attempts * poll_interval}s"
                 _pids[key] = None
                 _processes[key] = None
             _save_pids()
+            logger.error("Service %s: could not find real worker PID", key)
 
 
 async def stop_service(key: str) -> dict:
@@ -374,6 +531,7 @@ async def stop_service(key: str) -> dict:
         _pids[key] = None
         _processes[key] = None
         _restart_counts[key] = 0
+        _spawned_by_atlas.discard(key)
 
     _save_pids()
     logger.info("Service %s stopped", key)
@@ -610,16 +768,24 @@ async def _health_poll_loop():
                 if health_url:
                     is_healthy = await _check_health(health_url)
                 elif not svc.is_docker:
-                    # Worker — check PID
+                    # Worker — check the real PID (which we found by scanning)
                     pid = _pids.get(key)
                     if pid:
                         is_healthy = await asyncio.get_event_loop().run_in_executor(
                             None, _pid_alive, pid
                         )
                     else:
-                        # No PID tracked, check process object
-                        proc = _processes.get(key)
-                        is_healthy = proc is not None and proc.poll() is None
+                        # No tracked PID — try to find the real worker by cmd scan
+                        real_pid = await asyncio.get_event_loop().run_in_executor(
+                            None, _find_real_worker_pid, svc,
+                        )
+                        if real_pid:
+                            async with _lock:
+                                _pids[key] = real_pid
+                            _save_pids()
+                            is_healthy = True
+                        else:
+                            is_healthy = False
 
                 if not is_healthy:
                     logger.warning("Service %s is unhealthy, attempting auto-restart", key)
@@ -651,12 +817,9 @@ async def _auto_restart(key: str):
     async with _lock:
         _restart_counts[key] = len(_restart_timestamps[key])
 
-    # Mark as stopped first, then start
-    async with _lock:
-        _states[key] = ServiceState.STOPPED
-        _pids[key] = None
-        _processes[key] = None
-        _started_at[key] = None
+    # Actually stop the old process (kills process tree + port cleanup)
+    # before starting a new one — don't just reset state.
+    await stop_service(key)
 
     result = await start_service(key)
     if result.get("success"):
@@ -737,3 +900,29 @@ async def stop_all_services() -> list[dict]:
         results.append({"key": key, **result})
 
     return results
+
+
+async def stop_spawned_services():
+    """Stop only services that Atlas spawned this session.
+
+    Called on Atlas shutdown (Ctrl+C / SIGTERM). Services that were detected
+    as already-running on startup are left alone — they were started
+    independently and should survive Atlas restarts.
+    """
+    if not _spawned_by_atlas:
+        logger.info("No Atlas-spawned services to stop on shutdown")
+        return
+
+    to_stop = [k for k in _spawned_by_atlas if _states.get(k) == ServiceState.RUNNING]
+    if not to_stop:
+        return
+
+    ordered = _dependency_sort(to_stop)
+    ordered.reverse()  # Stop dependents first
+
+    logger.info("Stopping Atlas-spawned services: %s", ordered)
+    for key in ordered:
+        try:
+            await stop_service(key)
+        except Exception:
+            logger.warning("Error stopping %s on shutdown", key, exc_info=True)

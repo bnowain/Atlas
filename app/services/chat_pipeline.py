@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.models import Conversation, ConversationMessage
 from app.services import llm_client, provider_manager, instruction_manager
 from app.services.query_classifier import classify
+from app.services.schema_context import get_schema_context
 from app.services.tool_executor import execute_tool_call
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,12 @@ async def chat(
 
     # Build messages for LLM — use chat-only prompt when no tools
     system_prompt = SYSTEM_PROMPT if classification.tools else SYSTEM_PROMPT_CHAT_ONLY
+
+    # Inject per-spoke schema context so the LLM knows field names, enum values,
+    # key formats, and cross-spoke research patterns for the matched spokes
+    schema_ctx = get_schema_context(classification.spokes)
+    if schema_ctx:
+        system_prompt += "\n\n" + schema_ctx
 
     # Append custom instruction if selected
     if instruction_id:

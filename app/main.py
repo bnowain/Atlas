@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from app.database import init_db
+from app.database import init_db, validate_schema_columns
 from app.services import spoke_client, spoke_registry, ollama_manager, service_manager
 from app.middleware.error_handling import spoke_error_handler, spoke_timeout_handler
 
@@ -27,6 +27,7 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 async def lifespan(app: FastAPI):
     # Startup
     await init_db()
+    await validate_schema_columns()
     spoke_client.init_clients()
     spoke_registry.start_polling()
     logger.info("Atlas started — checking spokes...")
@@ -61,8 +62,10 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(service_manager.startup_auto_start_services(auto_keys))
 
     yield
-    # Shutdown — do NOT auto-stop spokes (they should survive Atlas restart)
+    # Shutdown — stop services that Atlas spawned (prevents orphan processes).
+    # Services detected as already-running on startup are left alone.
     service_manager.stop_health_polling()
+    await service_manager.stop_spawned_services()
     ollama_manager.stop_health_polling()
     spoke_registry.stop_polling()
     await spoke_client.close_clients()
