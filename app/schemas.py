@@ -199,3 +199,19 @@ class PersonLinkRequest(BaseModel):
     spoke_key: str
     spoke_person_id: str
     spoke_person_name: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Base system prompt
+# ---------------------------------------------------------------------------
+
+class BaseSystemPromptResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    content: str
+    updated_at: datetime
+
+
+class BaseSystemPromptUpdate(BaseModel):
+    content: str

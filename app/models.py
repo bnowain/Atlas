@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Integer, String, Text, ForeignKey, JSON,
+    Boolean, Column, DateTime, Integer, String, Text, ForeignKey, JSON, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -105,6 +105,20 @@ class PersonMapping(Base):
     created_at = Column(DateTime, default=_utcnow, nullable=False)
 
     unified_person = relationship("UnifiedPerson", back_populates="mappings")
+
+    __table_args__ = (UniqueConstraint("spoke_key", "spoke_person_id"),)
+
+
+# ---------------------------------------------------------------------------
+# Base system prompt (singleton — only one row stored)
+# ---------------------------------------------------------------------------
+
+class BaseSystemPrompt(Base):
+    __tablename__ = "base_system_prompts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    content = Column(Text, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
 
 
 # ---------------------------------------------------------------------------

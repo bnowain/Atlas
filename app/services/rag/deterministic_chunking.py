@@ -151,6 +151,30 @@ def _chunk_campaign_finance(source_type: str, source_id: str, text: str, metadat
     return _sliding_window_chunks(source_type, source_id, full_text, metadata)
 
 
+def _chunk_reference_sections(source_type: str, source_id: str, text: str, metadata: dict) -> list[Chunk]:
+    """Single chunk per Brown Act section — short legal text, prefix with section number + title."""
+    prefix = ""
+    if metadata.get("section_num"):
+        prefix = f"Section {metadata['section_num']}"
+        if metadata.get("title"):
+            prefix += f": {metadata['title']}"
+        prefix += "\n\n"
+    elif metadata.get("title"):
+        prefix = f"{metadata['title']}\n\n"
+
+    full_text = prefix + text
+    content_hash = compute_content_hash(full_text)
+    chunk_id = compute_chunk_id(source_type, source_id, content_hash)
+    return [Chunk(
+        chunk_id=chunk_id,
+        text=full_text,
+        content_hash=content_hash,
+        source_type=source_type,
+        source_id=source_id,
+        metadata=metadata,
+    )]
+
+
 def _chunk_generic(source_type: str, source_id: str, text: str, metadata: dict) -> list[Chunk]:
     """Fallback: sliding window chunks."""
     return _sliding_window_chunks(source_type, source_id, text, metadata)
@@ -208,4 +232,5 @@ _STRATEGIES = {
     "shasta_pra": _chunk_shasta_pra,
     "facebook_monitor": _chunk_facebook_monitor,
     "campaign_finance": _chunk_campaign_finance,
+    "reference_sections": _chunk_reference_sections,
 }

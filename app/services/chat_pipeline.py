@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import Conversation, ConversationMessage
-from app.services import llm_client, provider_manager, instruction_manager
+from app.services import llm_client, provider_manager, instruction_manager, system_prompt_manager
 from app.services.query_classifier import classify
 from app.services.schema_context import get_schema_context
 from app.services.tool_executor import execute_tool_call
@@ -30,10 +30,13 @@ You have access to tools that query local databases of:
 - Monitored public Facebook page posts and comments (facebook_monitor)
 - Campaign finance disclosures — filers, filings, transactions, elections (campaign_finance)
 
-Use tools to find data. Cite sources with dates/titles. Keep responses concise.
-When showing vote data, show the outcome, tally, mover/seconder, and any dissenting votes by name.
-When showing data from tools, format it clearly with relevant details.
-If a tool returns no results, say so — don't make up data."""
+## Tool use rules
+- **Chain tools without stopping.** If a tool returns an ID or partial result needed by another tool, call that next tool immediately — do NOT stop and ask the user if they want more information.
+- **Complete multi-step queries autonomously.** A question like "tell me about X and their meetings" requires multiple tool calls. Execute all of them, then present the final answer.
+- **Never surface raw IDs as the answer.** A person_id, meeting_id, or filer_id is an intermediate step, not a result. Always resolve it with the appropriate follow-up tool.
+- Cite sources with dates/titles. Keep final responses concise.
+- When showing vote data, include outcome, tally, mover/seconder, and any dissenting votes by name.
+- If a tool returns no results, say so — don't make up data."""
 
 SYSTEM_PROMPT_CHAT_ONLY = """You are Atlas, a helpful general-purpose assistant. Answer questions directly from your knowledge. Be concise and accurate."""
 
@@ -124,7 +127,11 @@ async def chat(
     conversation.provider_used = provider_label
 
     # Build messages for LLM — use chat-only prompt when no tools
-    system_prompt = SYSTEM_PROMPT if classification.tools else SYSTEM_PROMPT_CHAT_ONLY
+    if classification.tools:
+        stored = await system_prompt_manager.get_system_prompt(db)
+        system_prompt = stored.content if stored else SYSTEM_PROMPT
+    else:
+        system_prompt = SYSTEM_PROMPT_CHAT_ONLY
 
     # Inject per-spoke schema context so the LLM knows field names, enum values,
     # key formats, and cross-spoke research patterns for the matched spokes
@@ -140,20 +147,30 @@ async def chat(
 
     llm_messages = [{"role": "system", "content": system_prompt}]
 
-    # Load conversation history (last 20 messages for context)
+    # Load conversation history (last 20 messages for context).
+    # Always append the current user message explicitly so it's guaranteed to be
+    # last, regardless of whether SQLAlchemy's ORM collection tracking includes
+    # the just-flushed user_msg in conversation.messages (it may not, depending
+    # on how the FK was set vs. the relationship attribute).
     if conversation_id:
         existing_msgs = list(conversation.messages)
-        for msg in existing_msgs[-20:]:
+        # Exclude user_msg from history to avoid duplication (it's added below)
+        history = [m for m in existing_msgs if m.id != user_msg.id]
+        for msg in history[-20:]:
             llm_messages.append({"role": msg.role, "content": msg.content or ""})
-    else:
-        # New conversation — just the current user message
-        llm_messages.append({"role": "user", "content": message})
+
+    # Current user message always last
+    llm_messages.append({"role": "user", "content": message})
 
     # Tool call loop (streaming)
     full_response = ""
     all_tool_calls = []
 
     for round_num in range(MAX_TOOL_ROUNDS):
+        # Consume stream: yield tokens immediately, collect tool calls
+        round_content = ""
+        tool_calls = []
+
         try:
             if provider_kwargs:
                 stream = await llm_client.complete(
@@ -169,25 +186,22 @@ async def chat(
                     tools=classification.tools,
                     stream=True,
                 )
+
+            async for event in stream:
+                etype = event.get("type")
+                if etype == "token":
+                    round_content += event["content"]
+                    full_response += event["content"]
+                    yield {"type": "token", "content": event["content"]}
+                elif etype == "tool_calls_complete":
+                    tool_calls = event["tool_calls"]
+                elif etype == "done":
+                    break
+
         except Exception as exc:
-            logger.exception("LLM error")
+            logger.exception("LLM error in round %d", round_num)
             yield {"type": "error", "content": f"LLM error: {exc}"}
             return
-
-        # Consume stream: yield tokens immediately, collect tool calls
-        round_content = ""
-        tool_calls = []
-
-        async for event in stream:
-            etype = event.get("type")
-            if etype == "token":
-                round_content += event["content"]
-                full_response += event["content"]
-                yield {"type": "token", "content": event["content"]}
-            elif etype == "tool_calls_complete":
-                tool_calls = event["tool_calls"]
-            elif etype == "done":
-                break
 
         if not tool_calls:
             break

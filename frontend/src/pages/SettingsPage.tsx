@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Plus, Trash2, Check, X, Loader2, Zap, Play, Square, Upload, FileText } from 'lucide-react'
+import SystemPromptEditor from '../components/Chat/SystemPromptEditor'
 import { listProviders, createProvider, updateProvider, deleteProvider, testProvider } from '../api/spokes'
 import { startModel, stopModel } from '../api/models'
 import { startService, stopService, restartService, updateAutoStart, startAllServices, stopAllServices } from '../api/services'
@@ -195,6 +196,17 @@ export default function SettingsPage() {
     <div className="max-w-3xl mx-auto px-3 md:px-6 py-4 md:py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold">Settings</h1>
+      </div>
+
+      {/* Base System Prompt */}
+      <div className="mb-8">
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-1">Base System Prompt</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          The instructions Atlas uses on every tool-enabled chat. Changes take effect on the next message.
+        </p>
+        <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+          <SystemPromptEditor />
+        </div>
       </div>
 
       {/* Spoke Services */}

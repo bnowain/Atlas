@@ -117,11 +117,16 @@ export function useChat(): UseChatReturn {
       setError(err instanceof Error ? err.message : 'Stream error')
     } finally {
       setIsStreaming(false)
+      // Ensure any accumulated content is committed even if `done` was never received
       setMessages(prev => {
         const updated = [...prev]
         const last = updated[updated.length - 1]
         if (last?.role === 'assistant' && last.isStreaming) {
-          updated[updated.length - 1] = { ...last, isStreaming: false }
+          updated[updated.length - 1] = {
+            ...last,
+            content: fullContent || last.content,
+            isStreaming: false,
+          }
         }
         return updated
       })

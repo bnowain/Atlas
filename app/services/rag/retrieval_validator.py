@@ -34,7 +34,7 @@ async def retrieve(
 
     Returns a list of result dicts with text, metadata, and distance.
     """
-    active_sources = source_types or ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra", "facebook_monitor", "campaign_finance"]
+    active_sources = source_types or ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra", "facebook_monitor", "campaign_finance", "reference_sections"]
 
     # 1. Fetch candidates from spokes
     candidates = await _fetch_candidates(query, active_sources)
@@ -291,6 +291,31 @@ async def _fetch_from_spoke(source_type: str, query: str) -> list[dict]:
                             })
         except Exception as exc:
             logger.warning("campaign_finance fetch error: %s", exc)
+
+    elif source_type == "reference_sections":
+        try:
+            params: dict = {"limit": 200}
+            if query:
+                params["q"] = query
+            resp = await spoke_client.get("civic_media", "/api/reference/brown-act/sections", params=params)
+            if resp.status_code == 200:
+                sections = resp.json()
+                if isinstance(sections, list):
+                    for s in sections:
+                        text = s.get("text", "")
+                        if text:
+                            records.append({
+                                "source_type": "reference_sections",
+                                "source_id": str(s.get("ref_section_id", s.get("id", ""))),
+                                "text": text,
+                                "metadata": {
+                                    "section_num": s.get("section_num", ""),
+                                    "title": s.get("title", ""),
+                                    "date": "",
+                                },
+                            })
+        except Exception as exc:
+            logger.warning("reference_sections fetch error: %s", exc)
 
     return records
 

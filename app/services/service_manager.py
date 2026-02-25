@@ -186,13 +186,15 @@ def _find_real_worker_pid(svc: ServiceDefinition) -> int | None:
     """
     signature = _worker_cmd_signature(svc)
     try:
+        # Increased timeout to 30s: Get-CimInstance Win32_Process can take 10-20s
+        # on a busy system with many processes and GPU operations running.
         result = subprocess.run(
             ["powershell", "-Command",
              f"Get-CimInstance Win32_Process | "
              f"Where-Object {{ $_.CommandLine -like '*{signature}*' }} | "
              f"Select-Object ProcessId, ParentProcessId, CommandLine | "
              f"ConvertTo-Json"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=30,
         )
         if not result.stdout.strip():
             return None
@@ -227,7 +229,15 @@ def _find_real_worker_pid(svc: ServiceDefinition) -> int | None:
 
 
 def _kill_worker_processes(key: str, svc: ServiceDefinition):
-    """Kill all processes matching a worker's command line signature."""
+    """Kill all processes matching a worker's command line signature.
+
+    Also kills any watchdog cmd.exe loops (e.g. .celery_watchdog.cmd) that
+    would otherwise auto-restart the worker after we kill it.
+    """
+    # Step 1: Kill watchdog cmd.exe if present (stops auto-restart loops)
+    _kill_watchdog_cmd()
+
+    # Step 2: Kill all processes matching our worker's cmdline signature
     signature = _worker_cmd_signature(svc)
     try:
         result = subprocess.run(
@@ -235,7 +245,7 @@ def _kill_worker_processes(key: str, svc: ServiceDefinition):
              f"Get-CimInstance Win32_Process | "
              f"Where-Object {{ $_.CommandLine -like '*{signature}*' }} | "
              f"Select-Object ProcessId | ConvertTo-Json"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=30,
         )
         if not result.stdout.strip():
             return
@@ -249,12 +259,31 @@ def _kill_worker_processes(key: str, svc: ServiceDefinition):
             pid = proc_info["ProcessId"]
             subprocess.run(
                 ["taskkill", "/PID", str(pid), "/T", "/F"],
-                capture_output=True, timeout=5,
+                capture_output=True, timeout=10,
             )
         if data:
             logger.info("Killed %d old worker process(es) for %s", len(data), key)
     except Exception as e:
         logger.warning("Worker cleanup failed for %s: %s", key, e)
+
+
+def _kill_watchdog_cmd():
+    """Kill any cmd.exe process running .celery_watchdog.cmd.
+
+    The watchdog batch file loops indefinitely, restarting the celery worker
+    after every exit. Without killing it first, the worker respawns immediately
+    after being stopped — accumulating parallel instances over time.
+    """
+    try:
+        subprocess.run(
+            ["powershell", "-Command",
+             "Get-CimInstance Win32_Process "
+             "| Where-Object { $_.CommandLine -like '*.celery_watchdog.cmd*' } "
+             "| ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"],
+            capture_output=True, timeout=10,
+        )
+    except Exception as e:
+        logger.warning("Could not kill watchdog cmd processes: %s", e)
 
 
 def _save_pids():
@@ -404,6 +433,9 @@ async def _start_process(key: str, svc: ServiceDefinition, project_dir):
         await asyncio.get_event_loop().run_in_executor(
             None, _kill_worker_processes, key, svc,
         )
+        # Brief pause after kill to ensure processes are fully terminated
+        # before the new worker starts. Prevents zombie PID collisions.
+        await asyncio.sleep(2)
 
     exe = _resolve_executable(svc)
     cmd = [exe] + svc.start_args
@@ -470,7 +502,10 @@ async def _start_process(key: str, svc: ServiceDefinition, project_dir):
         # 30+ seconds to finish initialization before they appear stable.
         real_pid = None
         poll_interval = 3
-        max_attempts = 15  # up to 45 seconds total
+        # ML-heavy workers (e.g. Celery + Whisper) take 60–90s to fully load.
+        # Using 30 attempts × 3s = 90s window prevents false "not found" errors
+        # that caused the old 45s limit to incorrectly mark the worker as ERROR.
+        max_attempts = 30  # up to 90 seconds total
         for attempt in range(max_attempts):
             await asyncio.sleep(poll_interval)
             if proc.poll() is not None:
@@ -495,13 +530,20 @@ async def _start_process(key: str, svc: ServiceDefinition, project_dir):
             _save_pids()
             logger.info("Service %s started (real PID %d, worker)", key, real_pid)
         else:
+            # Mark as ERROR but note: the process may actually be running —
+            # ML model loading can exceed the detection window. If the worker
+            # is alive, worker_manager.check_worker_health() will show it online.
             async with _lock:
                 _states[key] = ServiceState.ERROR
-                _errors[key] = f"Worker process not found after {max_attempts * poll_interval}s"
+                _errors[key] = f"Worker PID not detected after {max_attempts * poll_interval}s (may still be loading)"
                 _pids[key] = None
                 _processes[key] = None
             _save_pids()
-            logger.error("Service %s: could not find real worker PID", key)
+            logger.warning(
+                "Service %s: could not find real worker PID within %ds "
+                "(worker may still be initializing — check /api/system/worker-health)",
+                key, max_attempts * poll_interval,
+            )
 
 
 async def stop_service(key: str) -> dict:
@@ -582,6 +624,13 @@ async def _stop_process(key: str, svc: ServiceDefinition):
     # Also kill by port as extra safety
     if svc.port:
         await asyncio.get_event_loop().run_in_executor(None, _kill_port_occupant, svc.port)
+    else:
+        # Portless background workers (e.g. Celery): kill by cmdline signature to
+        # catch python.exe grandchildren that survive celery.exe shim kills, and
+        # kill any watchdog loops that would auto-restart the worker.
+        await asyncio.get_event_loop().run_in_executor(
+            None, _kill_worker_processes, key, svc,
+        )
 
 
 async def restart_service(key: str) -> dict:
@@ -667,14 +716,23 @@ async def detect_running_services():
                 _states[key] = ServiceState.RUNNING
                 _started_at[key] = time.time()
                 logger.info("Detected running Docker service: %s", key)
-        elif not health_url and key in saved_pids:
-            # Worker — check if saved PID is alive
-            pid = saved_pids[key]
-            if _pid_alive(pid):
+        elif not health_url:
+            # Background worker (no health endpoint). Detect via:
+            # 1. Saved PID (fast path), or
+            # 2. Live cmdline scan (catches workers started outside Atlas, e.g. via watchdog)
+            detected_pid = None
+            if key in saved_pids:
+                saved_pid = saved_pids[key]
+                if _pid_alive(saved_pid):
+                    detected_pid = saved_pid
+            if not detected_pid:
+                # Slower but thorough: scan all processes for our worker signature
+                detected_pid = _find_real_worker_pid(svc)
+            if detected_pid:
                 _states[key] = ServiceState.RUNNING
                 _started_at[key] = time.time()
-                _pids[key] = pid
-                logger.info("Detected running worker: %s (PID %d)", key, pid)
+                _pids[key] = detected_pid
+                logger.info("Detected running worker: %s (PID %d)", key, detected_pid)
 
 
 async def _check_docker_running(svc: ServiceDefinition) -> bool:

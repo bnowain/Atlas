@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from difflib import SequenceMatcher
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,11 +24,11 @@ async def discover_people(db: AsyncSession, name: str | None = None) -> list[dic
         try:
             params = {}
             if query:
-                params["search"] = query
-            resp = await spoke_client.get("civic_media", "/api/people", params=params)
+                params["q"] = query
+            resp = await spoke_client.get("civic_media", "/api/people/", params=params)
             if resp.status_code == 200:
                 people = resp.json()
-                return [{"spoke": "civic_media", "id": str(p["id"]), "name": p.get("name", ""), "extra": p} for p in people]
+                return [{"spoke": "civic_media", "id": str(p["person_id"]), "name": p.get("canonical_name", ""), "extra": p} for p in people]
         except Exception:
             pass
         return []
@@ -144,3 +145,106 @@ async def link_person(
     await db.commit()
     await db.refresh(mapping)
     return mapping
+
+
+# ---------------------------------------------------------------------------
+# Spoke sync fetchers — each returns list[{spoke_person_id, canonical_name}]
+# ---------------------------------------------------------------------------
+
+# Names in civic_media that are annotation markers, not real people.
+# "Ignore" is used to tag pastor invocations, commercials, and other segments
+# that should be excluded from speaker attribution entirely.
+_CIVIC_MEDIA_SKIP_NAMES = {"ignore", "unknown", "unknown speaker"}
+
+
+async def _sync_fetch_civic_media() -> list[dict]:
+    """Fetch all people from civic_media for sync, excluding annotation markers."""
+    resp = await spoke_client.get("civic_media", "/api/people/")
+    if resp.status_code != 200:
+        raise RuntimeError(f"civic_media /api/people/ returned HTTP {resp.status_code}")
+    people = resp.json()
+    return [
+        {
+            "spoke_person_id": str(p["person_id"]),
+            "canonical_name": p.get("canonical_name", ""),
+        }
+        for p in people
+        if p.get("person_id")
+        and p.get("canonical_name")
+        and p["canonical_name"].strip().lower() not in _CIVIC_MEDIA_SKIP_NAMES
+    ]
+
+
+_SPOKE_SYNC_FETCHERS = {
+    "civic_media": _sync_fetch_civic_media,
+}
+
+
+async def sync_from_spoke(db: AsyncSession, spoke_key: str) -> dict:
+    """
+    Sync all people from a spoke into unified_people + person_mappings.
+
+    Strategy:
+    - If mapping already exists → update spoke_person_name if changed
+    - If no mapping → create new UnifiedPerson + PersonMapping
+
+    Returns: {spoke_key, total_fetched, created, updated, unchanged}
+    """
+    fetcher = _SPOKE_SYNC_FETCHERS.get(spoke_key)
+    if fetcher is None:
+        raise ValueError(f"No sync fetcher for spoke: {spoke_key}")
+
+    spoke_people = await fetcher()
+
+    # Load all existing mappings for this spoke into a lookup dict
+    result = await db.execute(
+        select(PersonMapping).where(PersonMapping.spoke_key == spoke_key)
+    )
+    existing_mappings: dict[str, PersonMapping] = {
+        m.spoke_person_id: m for m in result.scalars().all()
+    }
+
+    created = 0
+    updated = 0
+    unchanged = 0
+
+    for person_data in spoke_people:
+        sid = person_data["spoke_person_id"]
+        name = person_data["canonical_name"]
+
+        if sid in existing_mappings:
+            mapping = existing_mappings[sid]
+            if mapping.spoke_person_name != name:
+                mapping.spoke_person_name = name
+                # Also update the unified person's display_name
+                unified = await db.get(UnifiedPerson, mapping.unified_person_id)
+                if unified:
+                    unified.display_name = name
+                    unified.updated_at = datetime.now(timezone.utc)
+                updated += 1
+            else:
+                unchanged += 1
+        else:
+            # New person — create UnifiedPerson + PersonMapping
+            unified = UnifiedPerson(display_name=name)
+            db.add(unified)
+            await db.flush()  # get the auto-generated id
+
+            mapping = PersonMapping(
+                unified_person_id=unified.id,
+                spoke_key=spoke_key,
+                spoke_person_id=sid,
+                spoke_person_name=name,
+            )
+            db.add(mapping)
+            created += 1
+
+    await db.commit()
+
+    return {
+        "spoke_key": spoke_key,
+        "total_fetched": len(spoke_people),
+        "created": created,
+        "updated": updated,
+        "unchanged": unchanged,
+    }

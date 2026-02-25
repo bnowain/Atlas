@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { ExternalLink, Loader2 } from 'lucide-react'
 import { apiFetch } from '../api/client'
 import { formatDate } from '../utils/formatters'
@@ -42,20 +43,29 @@ export default function MeetingsPage() {
       ) : (
         <div className="space-y-2">
           {meetings.map(m => (
-            <a
-              key={m.meeting_id}
-              href={spokeUrl(8000, `/review/${m.meeting_id}`)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 hover:border-blue-500/30 transition-colors"
-            >
-              <div className="text-sm font-medium">{m.title || `Meeting ${m.meeting_id}`}</div>
-              <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                {m.meeting_date && <span>{formatDate(m.meeting_date)}</span>}
-                {m.governing_body && <><span>&middot;</span><span>{m.governing_body}</span></>}
-                {m.meeting_type && <><span>&middot;</span><span>{m.meeting_type}</span></>}
-              </div>
-            </a>
+            <div key={m.meeting_id} className="relative group">
+              <Link
+                to={`/meetings/${m.meeting_id}`}
+                className="block bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 hover:border-blue-500/30 transition-colors pr-10"
+              >
+                <div className="text-sm font-medium">{m.title || `Meeting ${m.meeting_id}`}</div>
+                <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                  {m.meeting_date && <span>{formatDate(m.meeting_date)}</span>}
+                  {m.governing_body && <><span>&middot;</span><span>{m.governing_body}</span></>}
+                  {m.meeting_type && <><span>&middot;</span><span>{m.meeting_type}</span></>}
+                </div>
+              </Link>
+              <a
+                href={spokeUrl(8000, `/review/${m.meeting_id}`)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-600 hover:text-gray-400 transition-colors"
+                title="Open in Civic Media"
+                onClick={e => e.stopPropagation()}
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           ))}
         </div>
       )}

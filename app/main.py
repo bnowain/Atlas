@@ -108,7 +108,7 @@ app.add_exception_handler(httpx.ConnectError, spoke_error_handler)
 app.add_exception_handler(httpx.TimeoutException, spoke_timeout_handler)
 
 # --- Routers ---
-from app.routers import health, spokes, chat, settings, people, search, pipeline, models, instructions, rag, services, summaries  # noqa: E402
+from app.routers import health, spokes, chat, settings, people, search, pipeline, models, instructions, rag, services, summaries, system_prompt  # noqa: E402
 
 app.include_router(health.router)
 app.include_router(spokes.router)
@@ -122,6 +122,7 @@ app.include_router(instructions.router)
 app.include_router(rag.router)
 app.include_router(services.router)
 app.include_router(summaries.router)
+app.include_router(system_prompt.router)
 
 # --- Static file serving (production) ---
 if FRONTEND_DIST.is_dir():

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Plus, History, Trash2 } from 'lucide-react'
+import { Plus, History, Trash2, Terminal } from 'lucide-react'
 import ChatPanel from '../components/Chat/ChatPanel'
 import ModelSelector from '../components/Chat/ModelSelector'
 import InstructionSelector from '../components/Chat/InstructionSelector'
 import SpokeFilter, { ALL_SPOKE_KEYS } from '../components/Chat/SpokeFilter'
+import SystemPromptEditor from '../components/Chat/SystemPromptEditor'
 import { useChat } from '../hooks/useChat'
 import { listConversations, getConversation, deleteConversation } from '../api/chat'
 import { getDefaultInstruction } from '../api/instructions'
@@ -17,6 +18,7 @@ export default function ChatPage() {
   const chat = useChat()
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
   const [showHistory, setShowHistory] = useState(false)
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
   const [selectedProviderId, setSelectedProviderId] = useState<number | null>(null)
   const [activeSpokes, setActiveSpokes] = useState<string[]>([...ALL_SPOKE_KEYS])
@@ -148,10 +150,19 @@ export default function ChatPage() {
             selectedInstructionId={selectedInstructionId}
             onSelect={setSelectedInstructionId}
           />
-          <span className="text-sm text-gray-500 ml-2">
+          <button
+            onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+            className={`p-1.5 rounded-lg transition-colors ml-auto ${showSystemPrompt ? 'bg-gray-700 text-blue-400' : 'hover:bg-gray-800 text-gray-500'}`}
+            title="Edit base system prompt"
+          >
+            <Terminal className="w-4 h-4" />
+          </button>
+          <span className="text-sm text-gray-500">
             {chat.conversationId ? `Chat #${chat.conversationId}` : 'New conversation'}
           </span>
         </div>
+
+        {showSystemPrompt && <SystemPromptEditor />}
 
         <ChatPanel
           messages={chat.messages}

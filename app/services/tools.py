@@ -51,7 +51,12 @@ SEARCH_SPEAKERS = {
     "type": "function",
     "function": {
         "name": "search_speakers",
-        "description": "Search for known speakers/people across civic meetings. Returns names, voiceprint counts, and IDs.",
+        "description": (
+            "Search for known speakers/people across civic meetings by name. "
+            "Returns person_id, canonical_name, and voiceprint_count. "
+            "Always follow up with get_speaker_appearances(person_id) to get their meeting history — "
+            "do not stop after finding the person_id."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -69,13 +74,25 @@ GET_SPEAKER_APPEARANCES = {
     "type": "function",
     "function": {
         "name": "get_speaker_appearances",
-        "description": "Get all meetings where a specific speaker has been identified, with segment counts per meeting.",
+        "description": (
+            "Get all meetings where a specific speaker has been identified, with meeting dates, "
+            "titles, governing body, and segment counts. Use this immediately after search_speakers "
+            "returns a person_id — this is what answers 'what meetings did X attend'."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
                 "person_id": {
                     "type": "string",
                     "description": "The person UUID string from civic_media (returned by search_speakers)",
+                },
+                "date_from": {
+                    "type": "string",
+                    "description": "Filter to meetings on or after this date (YYYY-MM-DD). Use to answer 'this year' or 'since ...' queries.",
+                },
+                "date_to": {
+                    "type": "string",
+                    "description": "Filter to meetings on or before this date (YYYY-MM-DD).",
                 },
             },
             "required": ["person_id"],

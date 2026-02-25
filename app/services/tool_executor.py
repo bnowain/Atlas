@@ -71,8 +71,8 @@ async def _get_transcript(args: dict) -> dict:
 async def _search_speakers(args: dict) -> dict:
     params = {}
     if args.get("query"):
-        params["search"] = args["query"]
-    resp = await spoke_client.get("civic_media", "/api/people", params=params)
+        params["q"] = args["query"]
+    resp = await spoke_client.get("civic_media", "/api/people/", params=params)
     if resp.status_code != 200:
         return {"success": False, "error": f"HTTP {resp.status_code}"}
     return {"success": True, "data": resp.json()}
@@ -80,7 +80,12 @@ async def _search_speakers(args: dict) -> dict:
 
 async def _get_speaker_appearances(args: dict) -> dict:
     pid = args["person_id"]
-    resp = await spoke_client.get("civic_media", f"/api/people/{pid}/appearances")
+    params = {}
+    if args.get("date_from"):
+        params["date_from"] = args["date_from"]
+    if args.get("date_to"):
+        params["date_to"] = args["date_to"]
+    resp = await spoke_client.get("civic_media", f"/api/people/{pid}/appearances", params=params)
     if resp.status_code != 200:
         return {"success": False, "error": f"HTTP {resp.status_code}"}
     return {"success": True, "data": resp.json()}
@@ -128,6 +133,7 @@ async def _get_meeting_speakers(args: dict) -> dict:
             "verified_segments": verified_counts.get(pid, 0),
         }
         for pid, count in sorted(segment_counts.items(), key=lambda x: -x[1])
+        if people_map.get(pid, "").strip().lower() not in {"ignore", "unknown", "unknown speaker"}
     ]
     return {
         "success": True,
