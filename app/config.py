@@ -200,7 +200,7 @@ SPOKE_REQUEST_TIMEOUT = 30.0  # seconds for proxied requests
 # Service Manager — spoke lifecycle definitions
 # ---------------------------------------------------------------------------
 
-APPS_ROOT = Path(os.getenv("APPS_ROOT", str(BASE_DIR.parent.parent)))
+APPS_ROOT = Path(os.getenv("APPS_ROOT", str(BASE_DIR.parent)))
 SERVICE_LOG_DIR = DATABASE_DIR / "logs"
 SERVICE_LOG_DIR.mkdir(exist_ok=True)
 SERVICE_PID_FILE = DATABASE_DIR / ".service_pids.json"

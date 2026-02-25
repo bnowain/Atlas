@@ -223,6 +223,15 @@ async def _spawn_service(key: str):
     svc = SERVICE_DEFINITIONS[key]
     project_dir = APPS_ROOT / svc.project_dir
 
+    # Fail fast if directory doesn't exist
+    if not project_dir.is_dir():
+        msg = f"Project directory does not exist: {project_dir} (APPS_ROOT={APPS_ROOT})"
+        async with _lock:
+            _states[key] = ServiceState.ERROR
+            _errors[key] = msg
+        logger.error("Cannot start %s: %s", key, msg)
+        return
+
     try:
         if svc.is_docker:
             await _start_docker_service(svc, project_dir)
@@ -650,13 +659,26 @@ async def _auto_restart(key: str):
         _started_at[key] = None
 
     result = await start_service(key)
-    if not result.get("success"):
+    if result.get("success"):
+        logger.info("Auto-restart initiated for %s", key)
+    else:
         logger.error("Auto-restart failed for %s: %s", key, result.get("message"))
+        async with _lock:
+            _states[key] = ServiceState.ERROR
+            _errors[key] = f"Auto-restart failed: {result.get('message', 'unknown')}"
 
 
 def start_health_polling():
     """Start the background health polling task."""
     global _health_poll_task
+
+    # Log path resolution for diagnostics
+    logger.info("Service manager APPS_ROOT: %s (exists=%s)", APPS_ROOT, APPS_ROOT.is_dir())
+    for key, svc in SERVICE_DEFINITIONS.items():
+        project_dir = APPS_ROOT / svc.project_dir
+        if not project_dir.is_dir():
+            logger.warning("  %s: project_dir MISSING → %s", key, project_dir)
+
     if _health_poll_task is None or _health_poll_task.done():
         _health_poll_task = asyncio.create_task(_health_poll_loop())
         logger.info("Service health polling started")
