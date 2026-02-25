@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { ExternalLink, Loader2 } from 'lucide-react'
 import { apiFetch } from '../api/client'
 import { formatDate } from '../utils/formatters'
+import { spokeUrl } from '../utils/spokeUrl'
 
 interface Article {
   id: number
@@ -28,10 +29,10 @@ export default function ArticlesPage() {
   if (error) return <div className="p-6 text-red-400">{error}</div>
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
+    <div className="max-w-4xl mx-auto px-3 md:px-6 py-4 md:py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold">Articles</h1>
-        <a href="http://localhost:5000" target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1">
+        <a href={spokeUrl(5000)} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1">
           Open Article Tracker <ExternalLink className="w-3 h-3" />
         </a>
       </div>

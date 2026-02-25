@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { ExternalLink, Loader2, Search, Lock } from 'lucide-react'
 import { apiFetch } from '../api/client'
+import { spokeUrl } from '../utils/spokeUrl'
 
 interface Thread {
   id: number
@@ -32,13 +33,13 @@ export default function MessagesPage() {
   useEffect(() => { loadThreads() }, [])
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
+    <div className="max-w-4xl mx-auto px-3 md:px-6 py-4 md:py-8">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold">Messages</h1>
           <span title="Private — local only"><Lock className="w-4 h-4 text-purple-400" /></span>
         </div>
-        <a href="http://localhost:8147" target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1">
+        <a href={spokeUrl(8147)} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1">
           Open Facebook Offline <ExternalLink className="w-3 h-3" />
         </a>
       </div>

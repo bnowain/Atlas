@@ -21,9 +21,16 @@ class SpokeStatus(BaseModel):
     error: Optional[str] = None
 
 
+class TailscaleInfo(BaseModel):
+    ip: Optional[str] = None
+    hostname: Optional[str] = None
+    url: Optional[str] = None
+
+
 class HealthResponse(BaseModel):
     status: str  # "ok"
     spokes: list[SpokeStatus]
+    tailscale: Optional[TailscaleInfo] = None
 
 
 # ---------------------------------------------------------------------------

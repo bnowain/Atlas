@@ -23,7 +23,10 @@ from app.services.rag.retrieval_validator import _fetch_from_spoke
 
 logger = logging.getLogger(__name__)
 
-ALL_SOURCE_TYPES = ["civic_media", "article_tracker", "shasta_db", "facebook_offline"]
+ALL_SOURCE_TYPES = [
+    "civic_media", "article_tracker", "shasta_db", "facebook_offline",
+    "shasta_pra", "facebook_monitor", "campaign_finance",
+]
 VALID_MODES = {"check_only", "fix_missing", "fix_stale", "delete_orphans", "full_rebuild"}
 
 

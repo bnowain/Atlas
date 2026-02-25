@@ -195,3 +195,180 @@ ATLAS_HOST = os.getenv("ATLAS_HOST", "0.0.0.0")
 ATLAS_PORT = int(os.getenv("ATLAS_PORT", "8888"))
 HEALTH_POLL_INTERVAL = 30  # seconds
 SPOKE_REQUEST_TIMEOUT = 30.0  # seconds for proxied requests
+
+# ---------------------------------------------------------------------------
+# Service Manager — spoke lifecycle definitions
+# ---------------------------------------------------------------------------
+
+APPS_ROOT = Path(os.getenv("APPS_ROOT", str(BASE_DIR.parent.parent)))
+SERVICE_LOG_DIR = DATABASE_DIR / "logs"
+SERVICE_LOG_DIR.mkdir(exist_ok=True)
+SERVICE_PID_FILE = DATABASE_DIR / ".service_pids.json"
+
+
+@dataclass
+class ServiceDefinition:
+    """Definition of a managed service (spoke process or background worker)."""
+    key: str                            # Unique identifier, e.g. "civic_media_web"
+    spoke_key: str                      # Atlas spoke key for health checks (or "")
+    name: str                           # Display name
+    port: int | None                    # HTTP port (None for background workers)
+    project_dir: str                    # Relative to APPS_ROOT
+    venv_relpath: str | None            # e.g. "venv/Scripts/python.exe", None = system python
+    start_args: list[str]               # Arguments after python.exe
+    health_path: str | None             # URL path for health check (None for workers)
+    shutdown_path: str | None           # URL path for graceful shutdown (None for workers)
+    depends_on: list[str]               # Service keys that must be running first
+    is_docker: bool = False             # True for Docker-managed services
+    docker_service: str = ""            # docker compose service name
+    process_group: str = ""             # UI grouping label
+
+
+SERVICE_DEFINITIONS: dict[str, ServiceDefinition] = {
+    "civic_media_redis": ServiceDefinition(
+        key="civic_media_redis",
+        spoke_key="",
+        name="Redis (Docker)",
+        port=6379,
+        project_dir="civic_media",
+        venv_relpath=None,
+        start_args=[],
+        health_path=None,
+        shutdown_path=None,
+        depends_on=[],
+        is_docker=True,
+        docker_service="redis",
+        process_group="Civic Media",
+    ),
+    "civic_media_web": ServiceDefinition(
+        key="civic_media_web",
+        spoke_key="civic_media",
+        name="Civic Media API",
+        port=8000,
+        project_dir="civic_media",
+        venv_relpath="venv/Scripts/python.exe",
+        start_args=["-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"],
+        health_path="/api/health",
+        shutdown_path="/api/system/shutdown",
+        depends_on=["civic_media_redis"],
+        process_group="Civic Media",
+    ),
+    "civic_media_worker": ServiceDefinition(
+        key="civic_media_worker",
+        spoke_key="",
+        name="Civic Media Worker",
+        port=None,
+        project_dir="civic_media",
+        venv_relpath="venv/Scripts/python.exe",
+        start_args=["-m", "celery", "-A", "app.worker.celery_app", "worker",
+                     "--loglevel=info", "--concurrency=1", "--pool=solo"],
+        health_path=None,
+        shutdown_path=None,
+        depends_on=["civic_media_redis"],
+        process_group="Civic Media",
+    ),
+    "article_tracker_web": ServiceDefinition(
+        key="article_tracker_web",
+        spoke_key="article_tracker",
+        name="Article Tracker Web",
+        port=5000,
+        project_dir="article-tracker",
+        venv_relpath="venv/Scripts/python.exe",
+        start_args=["web.py", "--port", "5000"],
+        health_path="/api/health",
+        shutdown_path="/api/system/shutdown",
+        depends_on=[],
+        process_group="Article Tracker",
+    ),
+    "article_tracker_fetcher": ServiceDefinition(
+        key="article_tracker_fetcher",
+        spoke_key="",
+        name="Article Tracker Fetcher",
+        port=None,
+        project_dir="article-tracker",
+        venv_relpath="venv/Scripts/python.exe",
+        start_args=["run.py", "--continuous"],
+        health_path=None,
+        shutdown_path=None,
+        depends_on=[],
+        process_group="Article Tracker",
+    ),
+    "shasta_db": ServiceDefinition(
+        key="shasta_db",
+        spoke_key="shasta_db",
+        name="Shasta-DB",
+        port=8844,
+        project_dir="Shasta-DB",
+        venv_relpath=".venv/Scripts/python.exe",
+        start_args=["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8844"],
+        health_path="/health",
+        shutdown_path="/api/system/shutdown",
+        depends_on=[],
+        process_group="Shasta-DB",
+    ),
+    "shasta_pra": ServiceDefinition(
+        key="shasta_pra",
+        spoke_key="shasta_pra",
+        name="Shasta PRA",
+        port=8845,
+        project_dir="Shasta-PRA-Backup",
+        venv_relpath="venv/Scripts/python.exe",
+        start_args=["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8845"],
+        health_path="/api/health",
+        shutdown_path="/api/system/shutdown",
+        depends_on=[],
+        process_group="Shasta PRA",
+    ),
+    "campaign_finance": ServiceDefinition(
+        key="campaign_finance",
+        spoke_key="campaign_finance",
+        name="Campaign Finance",
+        port=8855,
+        project_dir="Shasta-Campaign-Finance",
+        venv_relpath=None,
+        start_args=["-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8855"],
+        health_path="/api/health",
+        shutdown_path="/api/system/shutdown",
+        depends_on=[],
+        process_group="Campaign Finance",
+    ),
+    "facebook_monitor_web": ServiceDefinition(
+        key="facebook_monitor_web",
+        spoke_key="facebook_monitor",
+        name="FB Monitor Web",
+        port=8150,
+        project_dir="Facebook-Monitor",
+        venv_relpath=None,
+        start_args=["web_ui.py", "--port", "8150"],
+        health_path="/api/health",
+        shutdown_path="/api/system/shutdown",
+        depends_on=[],
+        process_group="Facebook Monitor",
+    ),
+    "facebook_monitor_scraper": ServiceDefinition(
+        key="facebook_monitor_scraper",
+        spoke_key="",
+        name="FB Monitor Scraper",
+        port=None,
+        project_dir="Facebook-Monitor",
+        venv_relpath=None,
+        start_args=["fb_monitor.py", "--watch"],
+        health_path=None,
+        shutdown_path=None,
+        depends_on=["facebook_monitor_web"],
+        process_group="Facebook Monitor",
+    ),
+    "facebook_offline": ServiceDefinition(
+        key="facebook_offline",
+        spoke_key="facebook_offline",
+        name="Facebook Offline",
+        port=8147,
+        project_dir="Facebook-Offline/facebook-viewer/backend",
+        venv_relpath="venv/Scripts/python.exe",
+        start_args=["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8147"],
+        health_path="/api/health",
+        shutdown_path="/api/system/shutdown",
+        depends_on=[],
+        process_group="Facebook Offline",
+    ),
+}

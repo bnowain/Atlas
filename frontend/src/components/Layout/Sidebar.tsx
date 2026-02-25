@@ -20,14 +20,18 @@ const navItems = [
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const
 
-export default function Sidebar() {
+interface SidebarProps {
+  onNavigate?: () => void
+}
+
+export default function Sidebar({ onNavigate }: SidebarProps) {
   const { spokes } = useSpokeStatus()
   const spokeMap = Object.fromEntries(spokes.map(s => [s.key, s]))
 
   return (
     <aside className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col h-full shrink-0">
-      {/* Logo */}
-      <div className="px-4 py-4 border-b border-gray-800">
+      {/* Logo — hidden on mobile (mobile header has its own) */}
+      <div className="px-4 py-4 border-b border-gray-800 hidden md:block">
         <div className="flex items-center gap-2">
           <Globe className="w-6 h-6 text-blue-400" />
           <span className="text-lg font-semibold tracking-tight">Atlas</span>
@@ -50,6 +54,7 @@ export default function Sidebar() {
               key={item.to}
               to={item.to}
               end={item.to === '/'}
+              onClick={onNavigate}
               className={({ isActive }) =>
                 `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
                   isActive

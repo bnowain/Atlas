@@ -105,3 +105,16 @@ class PersonMapping(Base):
     created_at = Column(DateTime, default=_utcnow, nullable=False)
 
     unified_person = relationship("UnifiedPerson", back_populates="mappings")
+
+
+# ---------------------------------------------------------------------------
+# Service Manager — auto-start persistence
+# ---------------------------------------------------------------------------
+
+class ServiceSetting(Base):
+    __tablename__ = "service_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    service_key = Column(String, unique=True, nullable=False)
+    auto_start = Column(Boolean, default=False, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)

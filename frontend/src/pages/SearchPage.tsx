@@ -26,7 +26,7 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
+    <div className="max-w-3xl mx-auto px-3 md:px-6 py-4 md:py-8">
       <h1 className="text-xl font-semibold mb-6">Unified Search</h1>
 
       {/* Search input */}

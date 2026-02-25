@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from app.database import init_db
-from app.services import spoke_client, spoke_registry, ollama_manager
+from app.services import spoke_client, spoke_registry, ollama_manager, service_manager
 from app.middleware.error_handling import spoke_error_handler, spoke_timeout_handler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(name)-28s  %(levelname)-5s  %(message)s")
@@ -44,8 +45,24 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("No Ollama models detected — start them from the Settings page")
 
+    # Detect running spoke services and start health polling
+    await service_manager.detect_running_services()
+    service_manager.start_health_polling()
+
+    # Auto-start services from DB settings
+    from sqlalchemy import select as sa_select
+    from app.database import AsyncSessionLocal
+    from app.models import ServiceSetting
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(sa_select(ServiceSetting).where(ServiceSetting.auto_start == True))
+        auto_keys = [r.service_key for r in result.scalars().all()]
+    if auto_keys:
+        logger.info("Auto-start services: %s", auto_keys)
+        asyncio.create_task(service_manager.startup_auto_start_services(auto_keys))
+
     yield
-    # Shutdown
+    # Shutdown — do NOT auto-stop spokes (they should survive Atlas restart)
+    service_manager.stop_health_polling()
     ollama_manager.stop_health_polling()
     spoke_registry.stop_polling()
     await spoke_client.close_clients()
@@ -60,15 +77,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow the Vite dev server and local origins
+# CORS — allow the Vite dev server, local origins, and Tailscale origins
+from app.services.tailscale import detect_tailscale, get_tailscale_origins
+
+ts_ip, ts_host = detect_tailscale()
+if ts_ip:
+    logger.info("Tailscale detected: %s (%s)", ts_ip, ts_host or "no DNS")
+
+cors_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8888",
+    "http://127.0.0.1:8888",
+]
+cors_origins.extend(get_tailscale_origins([8888, 5173]))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8888",
-        "http://127.0.0.1:8888",
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -79,7 +105,7 @@ app.add_exception_handler(httpx.ConnectError, spoke_error_handler)
 app.add_exception_handler(httpx.TimeoutException, spoke_timeout_handler)
 
 # --- Routers ---
-from app.routers import health, spokes, chat, settings, people, search, pipeline, models, instructions, rag  # noqa: E402
+from app.routers import health, spokes, chat, settings, people, search, pipeline, models, instructions, rag, services, summaries  # noqa: E402
 
 app.include_router(health.router)
 app.include_router(spokes.router)
@@ -91,6 +117,8 @@ app.include_router(pipeline.router)
 app.include_router(models.router)
 app.include_router(instructions.router)
 app.include_router(rag.router)
+app.include_router(services.router)
+app.include_router(summaries.router)
 
 # --- Static file serving (production) ---
 if FRONTEND_DIST.is_dir():

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { ExternalLink, Loader2 } from 'lucide-react'
 import { apiFetch } from '../api/client'
 import { formatDate } from '../utils/formatters'
+import { spokeUrl } from '../utils/spokeUrl'
 
 interface Meeting {
   meeting_id: string
@@ -28,10 +29,10 @@ export default function MeetingsPage() {
   if (error) return <div className="p-6 text-red-400">{error}</div>
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
+    <div className="max-w-4xl mx-auto px-3 md:px-6 py-4 md:py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold">Meetings</h1>
-        <a href="http://localhost:8000" target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1">
+        <a href={spokeUrl(8000)} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1">
           Open Civic Media <ExternalLink className="w-3 h-3" />
         </a>
       </div>
@@ -43,7 +44,7 @@ export default function MeetingsPage() {
           {meetings.map(m => (
             <a
               key={m.meeting_id}
-              href={`http://localhost:8000/review/${m.meeting_id}`}
+              href={spokeUrl(8000, `/review/${m.meeting_id}`)}
               target="_blank"
               rel="noopener noreferrer"
               className="block bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 hover:border-blue-500/30 transition-colors"

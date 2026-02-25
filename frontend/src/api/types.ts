@@ -162,6 +162,29 @@ export interface SystemInstructionUpdate {
   is_default?: boolean
 }
 
+// Service Manager
+export type ServiceState = 'stopped' | 'starting' | 'running' | 'stopping' | 'error'
+
+export interface ServiceStatus {
+  key: string
+  name: string
+  port: number | null
+  state: ServiceState
+  error: string | null
+  started_at: number | null
+  restart_count: number
+  auto_start: boolean
+  process_group: string
+  depends_on: string[]
+  is_docker: boolean
+}
+
+export interface ServiceActionResult {
+  success: boolean
+  message: string
+  state: ServiceState
+}
+
 // Unified people
 export interface PersonMapping {
   id: number

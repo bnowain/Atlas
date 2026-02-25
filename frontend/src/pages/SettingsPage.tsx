@@ -1,20 +1,84 @@
-import { useState, useEffect } from 'react'
-import { Plus, Trash2, Check, X, Loader2, Zap } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { Plus, Trash2, Check, X, Loader2, Zap, Play, Square, Upload, FileText } from 'lucide-react'
 import { listProviders, createProvider, updateProvider, deleteProvider, testProvider } from '../api/spokes'
 import { startModel, stopModel } from '../api/models'
+import { startService, stopService, restartService, updateAutoStart, startAllServices, stopAllServices } from '../api/services'
+import { getSummaryCoverage, batchUploadSummaries } from '../api/summaries'
+import type { SummaryCoverage, BatchUploadResponse } from '../api/summaries'
 import { useModels } from '../hooks/useModels'
+import { useServices } from '../hooks/useServices'
 import type { LLMProvider } from '../api/types'
 import VRAMBar from '../components/Settings/VRAMBar'
 import ModelCard from '../components/Settings/ModelCard'
+import ServiceCard from '../components/Settings/ServiceCard'
 
 export default function SettingsPage() {
   const [providers, setProviders] = useState<LLMProvider[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [testResults, setTestResults] = useState<Record<number, { success: boolean; error?: string } | 'testing'>>({})
+  const [bulkAction, setBulkAction] = useState(false)
 
   // vLLM models
   const { models, gpu, refresh: refreshModels } = useModels()
+  // Spoke services
+  const { services, refresh: refreshServices } = useServices()
+
+  // Group services by process_group
+  const serviceGroups = useMemo(() => {
+    const groups: Record<string, typeof services> = {}
+    for (const s of services) {
+      const group = s.process_group || 'Other'
+      if (!groups[group]) groups[group] = []
+      groups[group].push(s)
+    }
+    return groups
+  }, [services])
+
+  // Running services set (for dependency checking)
+  const runningKeys = useMemo(() => new Set(
+    services.filter(s => s.state === 'running').map(s => s.key)
+  ), [services])
+
+  const handleStartService = async (key: string) => {
+    await startService(key)
+    refreshServices()
+  }
+
+  const handleStopService = async (key: string) => {
+    await stopService(key)
+    refreshServices()
+  }
+
+  const handleRestartService = async (key: string) => {
+    await restartService(key)
+    refreshServices()
+  }
+
+  const handleAutoStartToggle = async (key: string, enabled: boolean) => {
+    await updateAutoStart(key, enabled)
+    refreshServices()
+  }
+
+  const handleStartAll = async () => {
+    setBulkAction(true)
+    try {
+      await startAllServices()
+      refreshServices()
+    } finally {
+      setBulkAction(false)
+    }
+  }
+
+  const handleStopAll = async () => {
+    setBulkAction(true)
+    try {
+      await stopAllServices()
+      refreshServices()
+    } finally {
+      setBulkAction(false)
+    }
+  }
 
   const handleStartModel = async (key: string) => {
     await startModel(key)
@@ -24,6 +88,41 @@ export default function SettingsPage() {
   const handleStopModel = async (key: string) => {
     await stopModel(key)
     refreshModels()
+  }
+
+  // Summary Management state
+  const [summaryProject, setSummaryProject] = useState('civic_media')
+  const [coverage, setCoverage] = useState<SummaryCoverage | null>(null)
+  const [coverageLoading, setCoverageLoading] = useState(false)
+  const [uploadResult, setUploadResult] = useState<BatchUploadResponse | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const summaryFileRef = useRef<HTMLInputElement>(null)
+
+  const loadCoverage = async (project: string) => {
+    setCoverageLoading(true)
+    setCoverage(null)
+    try {
+      const data = await getSummaryCoverage(project)
+      setCoverage(data)
+    } catch {
+      setCoverage(null)
+    } finally {
+      setCoverageLoading(false)
+    }
+  }
+
+  const handleBatchUpload = async (files: FileList) => {
+    setUploading(true)
+    setUploadResult(null)
+    try {
+      const result = await batchUploadSummaries(summaryProject, files)
+      setUploadResult(result)
+      loadCoverage(summaryProject)
+    } catch (e: any) {
+      setUploadResult({ total: 0, succeeded: 0, failed: 0, results: [{ filename: '', meeting_id: '', summary_type: '', success: false, error: e.message }] })
+    } finally {
+      setUploading(false)
+    }
   }
 
   // Form state
@@ -86,12 +185,148 @@ export default function SettingsPage() {
     { value: 'deepseek', label: 'DeepSeek', defaultUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
   ]
 
+  // Summary counts
+  const runningCount = services.filter(s => s.state === 'running').length
+  const totalCount = services.length
+
   if (loading) return <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-gray-500" /></div>
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
+    <div className="max-w-3xl mx-auto px-3 md:px-6 py-4 md:py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold">Settings</h1>
+      </div>
+
+      {/* Spoke Services */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Spoke Services</h2>
+            <span className="text-xs text-gray-500">
+              {runningCount}/{totalCount} running
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleStartAll}
+              disabled={bulkAction}
+              className="flex items-center gap-1 text-xs bg-green-700 hover:bg-green-600 disabled:opacity-40 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              {bulkAction ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+              Start All
+            </button>
+            <button
+              onClick={handleStopAll}
+              disabled={bulkAction}
+              className="flex items-center gap-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-40 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              {bulkAction ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+              Stop All
+            </button>
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-500 mb-4">
+          Start, stop, and monitor spoke services. Services auto-restart on failure (max 3 in 10 min).
+        </p>
+
+        {Object.entries(serviceGroups).map(([group, groupServices]) => (
+          <div key={group} className="mb-4">
+            <h3 className="text-xs font-medium text-gray-500 mb-2 pl-1">{group}</h3>
+            <div className="space-y-2">
+              {groupServices.map(s => {
+                const depsRunning = s.depends_on.every(dep => runningKeys.has(dep))
+                return (
+                  <ServiceCard
+                    key={s.key}
+                    service={s}
+                    onStart={handleStartService}
+                    onStop={handleStopService}
+                    onRestart={handleRestartService}
+                    onAutoStartToggle={handleAutoStartToggle}
+                    depsRunning={depsRunning}
+                  />
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Summary Management */}
+      <div className="mb-8">
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Summary Management</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Batch upload markdown summaries to spoke projects. File naming: <code className="bg-gray-800 px-1 rounded">{'{meeting_id}_short.md'}</code> or <code className="bg-gray-800 px-1 rounded">{'{meeting_id}_long.md'}</code>
+        </p>
+
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <label className="text-xs text-gray-400">Project:</label>
+            <select
+              value={summaryProject}
+              onChange={e => { setSummaryProject(e.target.value); setCoverage(null); setUploadResult(null) }}
+              className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-500"
+            >
+              <option value="civic_media">civic_media</option>
+            </select>
+            <button
+              onClick={() => loadCoverage(summaryProject)}
+              disabled={coverageLoading}
+              className="flex items-center gap-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-40 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              {coverageLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+              Check Coverage
+            </button>
+          </div>
+
+          {coverage && (
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="bg-gray-900 rounded-lg p-3">
+                <div className="text-gray-400 mb-1">Meetings</div>
+                <div>{coverage.meetings_short}/{coverage.meetings_total} have short summary</div>
+                <div>{coverage.meetings_long}/{coverage.meetings_total} have long summary</div>
+              </div>
+              <div className="bg-gray-900 rounded-lg p-3">
+                <div className="text-gray-400 mb-1">Documents</div>
+                <div>{coverage.documents_short}/{coverage.documents_total} have short summary</div>
+                <div>{coverage.documents_long}/{coverage.documents_total} have long summary</div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <input
+              ref={summaryFileRef}
+              type="file"
+              accept=".md,.txt"
+              multiple
+              className="hidden"
+              onChange={e => { if (e.target.files?.length) handleBatchUpload(e.target.files); e.target.value = '' }}
+            />
+            <button
+              onClick={() => summaryFileRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+              {uploading ? 'Uploading…' : 'Upload .md Files'}
+            </button>
+          </div>
+
+          {uploadResult && (
+            <div className="text-xs space-y-1">
+              <div className={uploadResult.failed > 0 ? 'text-yellow-400' : 'text-green-400'}>
+                {uploadResult.succeeded} succeeded, {uploadResult.failed} failed ({uploadResult.total} total)
+              </div>
+              {uploadResult.results.filter(r => !r.success).map((r, i) => (
+                <div key={i} className="text-red-400 pl-2">
+                  {r.filename}: {r.error}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* LLM Providers */}

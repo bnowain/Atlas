@@ -76,10 +76,12 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-full">
-      {/* History sidebar (toggleable) */}
+    <div className="flex h-full relative">
+      {/* History sidebar — overlay on mobile, inline on desktop */}
       {showHistory && (
-        <div className="w-64 border-r border-gray-800 flex flex-col bg-gray-900/50">
+        <>
+          <div className="fixed inset-0 bg-black/50 z-20 md:hidden" onClick={() => setShowHistory(false)} />
+          <div className="fixed inset-y-0 left-0 z-30 w-64 md:static md:z-auto border-r border-gray-800 flex flex-col bg-gray-900/95 md:bg-gray-900/50">
           <div className="flex items-center justify-between px-3 py-3 border-b border-gray-800">
             <span className="text-sm font-medium">History</span>
             <button
@@ -113,12 +115,13 @@ export default function ChatPage() {
             ))}
           </div>
         </div>
+        </>
       )}
 
       {/* Main chat area */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800">
+        <div className="flex flex-wrap items-center gap-2 px-2 md:px-4 py-2 border-b border-gray-800">
           <button
             onClick={() => setShowHistory(!showHistory)}
             className={`p-1.5 rounded-lg transition-colors ${showHistory ? 'bg-gray-700' : 'hover:bg-gray-800'}`}

@@ -115,7 +115,7 @@ export default function ModelSelector({
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-xl shadow-xl z-50 w-72 overflow-hidden">
+        <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-xl shadow-xl z-50 w-[calc(100vw-2rem)] md:w-72 max-w-72 overflow-hidden">
           {/* Local Models */}
           {models.length > 0 && (
             <>

@@ -19,7 +19,7 @@ export default function PeoplePage() {
   if (loading) return <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-gray-500" /></div>
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
+    <div className="max-w-4xl mx-auto px-3 md:px-6 py-4 md:py-8">
       <div className="flex items-center gap-2 mb-6">
         <Users className="w-5 h-5 text-gray-400" />
         <h1 className="text-xl font-semibold">People</h1>
