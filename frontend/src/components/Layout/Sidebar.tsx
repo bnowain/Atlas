@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { useSpokeStatus } from '../../hooks/useSpokeStatus'
 import {
   LayoutDashboard, MessageSquare, Search, Users,
-  Video, Newspaper, Archive, Mail, Settings, Globe,
+  Video, Newspaper, Archive, Mail, Settings, Globe, Cpu,
 } from 'lucide-react'
 
 const navItems = [
@@ -16,6 +16,8 @@ const navItems = [
   { to: '/messages', label: 'Messages', icon: Mail, spoke: 'facebook_offline' },
   { type: 'divider' as const },
   { to: '/people', label: 'People', icon: Users },
+  { type: 'divider' as const },
+  { href: 'http://localhost:8860', label: 'Mission Control', icon: Cpu, spoke: 'mission_control' },
   { type: 'divider' as const },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const
@@ -44,9 +46,36 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
           if ('type' in item && item.type === 'divider') {
             return <div key={i} className="my-2 border-t border-gray-800" />
           }
+
+          if ('href' in item) {
+            const Icon = item.icon
+            const status = spokeMap[item.spoke]
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="flex-1">{item.label}</span>
+                {status && (
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      status.online ? 'bg-green-400' : 'bg-red-400'
+                    }`}
+                    title={status.online ? `Online (${status.latency_ms}ms)` : 'Offline'}
+                  />
+                )}
+              </a>
+            )
+          }
+
           if (!('to' in item)) return null
+
           const Icon = item.icon
-          const spoke = 'spoke' in item ? item.spoke : undefined
+          const spoke = 'spoke' in item ? (item as { spoke?: string }).spoke : undefined
           const status = spoke ? spokeMap[spoke] : undefined
 
           return (

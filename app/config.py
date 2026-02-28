@@ -72,6 +72,12 @@ SPOKES: dict[str, SpokeConfig] = {
         base_url="http://localhost:8855",
         health_path="/api/health",
     ),
+    "mission_control": SpokeConfig(
+        key="mission_control",
+        name="Mission Control",
+        base_url="http://localhost:8860",
+        health_path="/api/health",
+    ),
 }
 
 # ---------------------------------------------------------------------------

@@ -7,8 +7,8 @@ from dataclasses import dataclass
 
 from app.services.tools import (
     CIVIC_MEDIA_TOOLS, ARTICLE_TRACKER_TOOLS, SHASTA_DB_TOOLS, FACEBOOK_OFFLINE_TOOLS,
-    SHASTA_PRA_TOOLS, FACEBOOK_MONITOR_TOOLS, CAMPAIGN_FINANCE_TOOLS, ALL_TOOLS,
-    SEMANTIC_SEARCH, SEARCH_ATLAS_PEOPLE,
+    SHASTA_PRA_TOOLS, FACEBOOK_MONITOR_TOOLS, CAMPAIGN_FINANCE_TOOLS, MISSION_CONTROL_TOOLS,
+    ALL_TOOLS, SEMANTIC_SEARCH, SEARCH_ATLAS_PEOPLE,
 )
 
 
@@ -61,6 +61,14 @@ _SPOKE_KEYWORDS: dict[str, list[str]] = {
         "expenditures", "donor", "donors", "filer", "filers", "filing", "filings",
         "fppc", "form 460", "pac", "committee", "treasurer", "netfile",
         "election", "candidate", "ballot measure",
+    ],
+    "mission_control": [
+        "mission control", "codex", "codex lesson", "ai lesson", "execution failure",
+        "model failure", "llm failure", "retry", "retries", "escalation", "replan",
+        "grading", "grading score", "routing", "model routing", "model performance",
+        "context window", "context escalation", "token limit", "execution loop",
+        "task failed", "ai execution", "pipeline failure", "worker", "artifact embedding",
+        "rag search", "semantic search mission", "codebase index",
     ],
 }
 
@@ -174,4 +182,5 @@ _SPOKE_TOOLS = {
     "shasta_pra": SHASTA_PRA_TOOLS,
     "facebook_monitor": FACEBOOK_MONITOR_TOOLS,
     "campaign_finance": CAMPAIGN_FINANCE_TOOLS,
+    "mission_control": MISSION_CONTROL_TOOLS,
 }

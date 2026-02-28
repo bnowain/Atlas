@@ -974,9 +974,88 @@ SHASTA_PRA_TOOLS = [SEARCH_PRA_REQUESTS, GET_PRA_REQUEST, LIST_PRA_DEPARTMENTS, 
 FACEBOOK_MONITOR_TOOLS = [SEARCH_MONITORED_POSTS, GET_MONITORED_POST, SEARCH_MONITORED_PEOPLE, LIST_MONITORED_PAGES, GET_FB_MONITOR_ENTITIES]
 CAMPAIGN_FINANCE_TOOLS = [SEARCH_CAMPAIGN_FILERS, GET_CAMPAIGN_FILER, SEARCH_CAMPAIGN_TRANSACTIONS, SEARCH_CAMPAIGN_FILINGS, GET_CAMPAIGN_STATS, SEARCH_CAMPAIGN_PEOPLE]
 
+# ---------------------------------------------------------------------------
+# mission_control tools
+# ---------------------------------------------------------------------------
+
+SEARCH_CODEX_LESSONS = {
+    "type": "function",
+    "function": {
+        "name": "search_codex_lessons",
+        "description": (
+            "Search Mission Control's Codex — a curated knowledge base of AI execution "
+            "lessons, failure patterns, and prevention guidelines. Use when the user asks "
+            "about model failures, retry strategies, escalation patterns, grading results, "
+            "or how to avoid known AI execution problems."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search term, e.g. 'context window exceeded', 'compilation failure', 'retry loop'",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max lessons to return (default 10, max 50)",
+                    "default": 10,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+GET_MC_ROUTER_STATS = {
+    "type": "function",
+    "function": {
+        "name": "get_mc_router_stats",
+        "description": (
+            "Get Mission Control's model routing performance summary — success rates, "
+            "average grading scores, and retry counts by model and task type. "
+            "Use when the user asks which AI models perform best for specific task types, "
+            "or wants to see routing telemetry."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+}
+
+SEARCH_MC_RAG = {
+    "type": "function",
+    "function": {
+        "name": "search_mc_rag",
+        "description": (
+            "Semantic search over Mission Control's indexed artifacts and web pages. "
+            "Returns the most relevant text chunks. Use when the user wants to find "
+            "specific content that was previously ingested into Mission Control."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural language search query",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 10)",
+                    "default": 10,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+MISSION_CONTROL_TOOLS = [SEARCH_CODEX_LESSONS, GET_MC_ROUTER_STATS, SEARCH_MC_RAG]
+
 ATLAS_TOOLS = [SEARCH_ATLAS_PEOPLE, SEMANTIC_SEARCH]
 
-ALL_TOOLS = CIVIC_MEDIA_TOOLS + ARTICLE_TRACKER_TOOLS + SHASTA_DB_TOOLS + FACEBOOK_OFFLINE_TOOLS + SHASTA_PRA_TOOLS + FACEBOOK_MONITOR_TOOLS + CAMPAIGN_FINANCE_TOOLS + ATLAS_TOOLS
+ALL_TOOLS = CIVIC_MEDIA_TOOLS + ARTICLE_TRACKER_TOOLS + SHASTA_DB_TOOLS + FACEBOOK_OFFLINE_TOOLS + SHASTA_PRA_TOOLS + FACEBOOK_MONITOR_TOOLS + CAMPAIGN_FINANCE_TOOLS + MISSION_CONTROL_TOOLS + ATLAS_TOOLS
 
 # Map tool name → spoke key for routing
 TOOL_TO_SPOKE: dict[str, str] = {}
@@ -994,3 +1073,5 @@ for tool in FACEBOOK_MONITOR_TOOLS:
     TOOL_TO_SPOKE[tool["function"]["name"]] = "facebook_monitor"
 for tool in CAMPAIGN_FINANCE_TOOLS:
     TOOL_TO_SPOKE[tool["function"]["name"]] = "campaign_finance"
+for tool in MISSION_CONTROL_TOOLS:
+    TOOL_TO_SPOKE[tool["function"]["name"]] = "mission_control"

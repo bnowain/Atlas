@@ -17,7 +17,7 @@ async def search(
     limit: int = 20,
 ) -> list[SearchResult]:
     """Search across all (or selected) spokes in parallel."""
-    targets = sources or ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra", "facebook_monitor", "campaign_finance"]
+    targets = sources or ["civic_media", "article_tracker", "shasta_db", "facebook_offline", "shasta_pra", "facebook_monitor", "campaign_finance", "mission_control"]
 
     tasks = []
     for spoke in targets:
@@ -232,6 +232,35 @@ async def _search_campaign_finance(query: str, limit: int) -> list[SearchResult]
         return []
 
 
+async def _search_mission_control(query: str, limit: int) -> list[SearchResult]:
+    """Search Mission Control's Codex lessons via the Atlas-exposed endpoint."""
+    try:
+        resp = await spoke_client.get(
+            "mission_control",
+            "/api/codex/search",
+            params={"q": query, "limit": limit},
+        )
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        results = []
+        for item in data.get("results", []):
+            results.append(SearchResult(
+                source="mission_control",
+                type="codex_lesson",
+                title=item.get("root_cause") or "Codex Lesson",
+                snippet=item.get("prevention_guideline"),
+                metadata={
+                    "category": item.get("category"),
+                    "confidence_score": item.get("confidence_score"),
+                    "scope": item.get("scope"),
+                },
+            ))
+        return results[:limit]
+    except Exception:
+        return []
+
+
 _SEARCHERS = {
     "civic_media": _search_civic_media,
     "article_tracker": _search_articles,
@@ -240,4 +269,5 @@ _SEARCHERS = {
     "shasta_pra": _search_pra,
     "facebook_monitor": _search_fb_monitor,
     "campaign_finance": _search_campaign_finance,
+    "mission_control": _search_mission_control,
 }

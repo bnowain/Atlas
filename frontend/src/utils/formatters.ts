@@ -34,6 +34,7 @@ export function spokeLabel(key: string): string {
     shasta_pra: 'Shasta PRA',
     facebook_monitor: 'FB Monitor',
     campaign_finance: 'Campaign Finance',
+    mission_control: 'Mission Control',
   }
   return labels[key] || key
 }
@@ -47,6 +48,7 @@ export function spokeColor(key: string): string {
     shasta_pra: 'text-sky-400',
     facebook_monitor: 'text-violet-400',
     campaign_finance: 'text-orange-400',
+    mission_control: 'text-rose-400',
   }
   return colors[key] || 'text-gray-400'
 }
@@ -60,6 +62,7 @@ export function spokeBg(key: string): string {
     shasta_pra: 'bg-sky-500/10 border-sky-500/20',
     facebook_monitor: 'bg-violet-500/10 border-violet-500/20',
     campaign_finance: 'bg-orange-500/10 border-orange-500/20',
+    mission_control: 'bg-rose-500/10 border-rose-500/20',
   }
   return colors[key] || 'bg-gray-500/10 border-gray-500/20'
 }
